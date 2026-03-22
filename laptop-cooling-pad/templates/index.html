@@ -14,43 +14,49 @@
       </div>
     </header>
 
-        <div class="control-block">
-          <div class="curve-head">
-            <h2>Curve</h2>
-            <div class="curve-color-pickers">
-              <label class="field inline-field">
-                <span>Edge 1</span>
-                <input id="curveStartColor" type="color" />
-              </label>
+    <div class="control-block">
+      <div class="curve-head">
+        <h2>Curve</h2>
+      </div>
 
-              <label class="field inline-field">
-                <span>Edge 2</span>
-                <input id="curveEndColor" type="color" />
-              </label>
-            </div>
-          </div>
+      <div class="curve-canvas-wrap">
+        <canvas id="curveCanvas" width="960" height="440"></canvas>
+        <div id="curveGradientBar" class="gradient-bar"></div>
+      </div>
 
-          <div class="curve-canvas-wrap">
-            <canvas id="curveCanvas" width="960" height="440"></canvas>
-            <div id="curveGradientBar" class="gradient-bar"></div>
-          </div>
+      <table class="curve-table">
+        <thead>
+          <tr>
+            <th>Temp (°C)</th>
+            <th>Fan (%)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="curveTableBody"></tbody>
+      </table>
 
-          <table class="curve-table">
-            <thead>
-              <tr>
-                <th>Temp (°C)</th>
-                <th>Fan (%)</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="curveTableBody"></tbody>
-          </table>
+      <hr>
+      <button id="addPointBtn" class="btn btn-secondary">Add Point</button>
+      <button id="saveCurveBtn" class="btn btn-primary">Save Curve</button>
 
-          <div class="curve-actions">
-            <button id="addPointBtn" class="btn btn-secondary">Add Point</button>
-            <button id="saveCurveBtn" class="btn btn-primary">Save Curve</button>
-          </div>
-        </div>
+      <hr>
+
+      <div class="curve-color-pickers">
+        <label class="field inline-field">
+          <span>Coldest Color</span>
+          <input id="curveStartColor" type="color" />
+        </label>
+
+        <label class="field inline-field">
+          <span>Hottest Color</span>
+          <input id="curveEndColor" type="color" />
+        </label>
+      </div>
+
+      <hr>
+
+    </div>
+  </div>
 
   <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
