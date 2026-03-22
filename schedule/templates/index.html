@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Laptop Cooling Pad UI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Dummy Flask Frontend</p>
+        <h1>Laptop Cooling Pad Control Panel</h1>
+      </div>
+      <button id="refreshBtn" class="btn btn-secondary">Refresh</button>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Temperature Sensor</h2>
+          <span id="sensorStatus" class="badge">--</span>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-label">Object Temp</span>
+            <strong id="objectTemp">--</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Ambient Temp</span>
+            <strong id="ambientTemp">--</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Module</span>
+            <strong id="sensorModule">--</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">I2C</span>
+            <strong id="sensorI2c">--</strong>
+          </div>
+        </div>
+
+        <div class="sensor-meta" id="sensorMeta"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Fans</h2>
+          <span class="muted">Manual dummy control</span>
+        </div>
+        <div id="fanList" class="stack"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>ARGB Zones</h2>
+          <span class="muted">Per-zone color + power state</span>
+        </div>
+        <div id="argbList" class="stack"></div>
+      </section>
+
+      <section class="panel panel-wide">
+        <div class="panel-head">
+          <h2>Temperature Curve</h2>
+          <div class="curve-colors">
+            <label>
+              Start
+              <input type="color" id="curveStartColor" />
+            </label>
+            <label>
+              End
+              <input type="color" id="curveEndColor" />
+            </label>
+          </div>
+        </div>
+
+        <div class="curve-layout">
+          <div class="curve-canvas-wrap">
+            <canvas id="curveCanvas" width="760" height="360"></canvas>
+            <div id="curveGradientPreview" class="curve-gradient-preview"></div>
+          </div>
+
+          <div class="curve-editor">
+            <table class="curve-table">
+              <thead>
+                <tr>
+                  <th>Temp (°C)</th>
+                  <th>Fan (%)</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="curveTableBody"></tbody>
+            </table>
+
+            <div class="curve-actions">
+              <button id="addPointBtn" class="btn btn-secondary">Add Point</button>
+              <button id="saveCurveBtn" class="btn btn-primary">Save Curve</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <template id="fanCardTemplate">
+    <div class="control-card fan-card">
+      <div class="control-head">
+        <div>
+          <h3></h3>
+          <p class="control-meta"></p>
+        </div>
+        <span class="rpm-pill">0 RPM</span>
+      </div>
+
+      <div class="slider-row">
+        <input class="fan-slider" type="range" min="0" max="100" step="1" />
+        <div class="slider-value">0%</div>
+      </div>
+    </div>
+  </template>
+
+  <template id="argbCardTemplate">
+    <div class="control-card argb-card">
+      <div class="control-head">
+        <div>
+          <h3></h3>
+          <p class="control-meta"></p>
+        </div>
+        <label class="switch">
+          <input class="argb-toggle" type="checkbox" />
+          <span class="switch-track"></span>
+        </label>
+      </div>
+
+      <div class="argb-row">
+        <input class="argb-color" type="color" />
+        <div class="rgb-readout">RGB(255, 255, 255)</div>
+      </div>
+    </div>
+  </template>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
