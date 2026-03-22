@@ -1,309 +1,346 @@
 const state = {
-  dashboard: null,
+  fan_data: null,
+  argb_data: null,
+  sensor_data: null,
+  ui_config: null,
+  summary: null,
 };
 
-const elements = {
-  refreshButton: document.getElementById('refreshButton'),
-  sensorStateBadge: document.getElementById('sensorStateBadge'),
-  laptopTemp: document.getElementById('laptopTemp'),
-  sensorTemp: document.getElementById('sensorTemp'),
-  fan1Speed: document.getElementById('fan1Speed'),
-  fan2Speed: document.getElementById('fan2Speed'),
-  currentColor: document.getElementById('currentColor'),
-  currentColorSwatch: document.getElementById('currentColorSwatch'),
-  fanJson: document.getElementById('fanJson'),
-  argbJson: document.getElementById('argbJson'),
-  sensorJson: document.getElementById('sensorJson'),
-  controllerJson: document.getElementById('controllerJson'),
-  controllerForm: document.getElementById('controllerForm'),
-  coldColor: document.getElementById('coldColor'),
-  hotColor: document.getElementById('hotColor'),
-  coldColorText: document.getElementById('coldColorText'),
-  hotColorText: document.getElementById('hotColorText'),
-  addPointButton: document.getElementById('addPointButton'),
-  curveRows: document.getElementById('curveRows'),
-  curveRowTemplate: document.getElementById('curveRowTemplate'),
-  curveCanvas: document.getElementById('curveCanvas'),
-  saveStatus: document.getElementById('saveStatus'),
-  simulatedTemp: document.getElementById('simulatedTemp'),
-  simulatedTempValue: document.getElementById('simulatedTempValue'),
-};
+const refreshBtn = document.getElementById("refreshBtn");
+const applyArgbBtn = document.getElementById("applyArgbBtn");
+const argbToggle = document.getElementById("argbToggle");
+const argbColor = document.getElementById("argbColor");
 
-function prettyJson(data) {
-  return JSON.stringify(data, null, 2);
+const curveStartColor = document.getElementById("curveStartColor");
+const curveEndColor = document.getElementById("curveEndColor");
+const addPointBtn = document.getElementById("addPointBtn");
+const saveCurveBtn = document.getElementById("saveCurveBtn");
+const curveTableBody = document.getElementById("curveTableBody");
+const curveGradientBar = document.getElementById("curveGradientBar");
+
+const curveCanvas = document.getElementById("curveCanvas");
+const ctx = curveCanvas.getContext("2d");
+
+function rgbToHex(r, g, b) {
+  return (
+    "#" +
+    [r, g, b]
+      .map((value) => Number(value).toString(16).padStart(2, "0"))
+      .join("")
+  );
 }
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
+function hexToRgb(hex) {
+  const clean = hex.replace("#", "");
+  return {
+    r: parseInt(clean.slice(0, 2), 16),
+    g: parseInt(clean.slice(2, 4), 16),
+    b: parseInt(clean.slice(4, 6), 16),
+  };
 }
 
-function normalizeHexColor(value, fallback = '#0000FF') {
-  const candidate = String(value || '').trim().toUpperCase();
-  if (/^#[0-9A-F]{6}$/.test(candidate)) {
-    return candidate;
+function interpolateColor(hexA, hexB, t) {
+  const a = hexToRgb(hexA);
+  const b = hexToRgb(hexB);
+
+  const mix = (x, y) => Math.round(x + (y - x) * t);
+
+  return `rgb(${mix(a.r, b.r)}, ${mix(a.g, b.g)}, ${mix(a.b, b.b)})`;
+}
+
+function sortCurve(points) {
+  return [...points].sort((a, b) => Number(a.temp) - Number(b.temp));
+}
+
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
   }
-  return fallback;
+  return response.json();
 }
 
-function setStatus(message, type = '') {
-  elements.saveStatus.textContent = message;
-  elements.saveStatus.className = `save-status ${type}`.trim();
-}
+async function loadInitialState() {
+  const data = await fetchJson("/api/state");
+  state.fan_data = data.fan_data;
+  state.argb_data = data.argb_data;
+  state.sensor_data = data.sensor_data;
+  state.ui_config = data.ui_config;
+  state.summary = data.summary;
 
-function createCurveRow(point = { temp: 40, fan_speed: 50 }) {
-  const row = elements.curveRowTemplate.content.firstElementChild.cloneNode(true);
-  row.querySelector('.curve-temp').value = point.temp;
-  row.querySelector('.curve-speed').value = point.fan_speed;
-  row.querySelector('.remove-point-button').addEventListener('click', () => {
-    row.remove();
-    if (!elements.curveRows.children.length) {
-      createCurveRow();
-    }
-    drawCurve();
-  });
-
-  row.querySelectorAll('input').forEach((input) => {
-    input.addEventListener('input', drawCurve);
-  });
-
-  elements.curveRows.appendChild(row);
-  return row;
-}
-
-function getCurveFromForm() {
-  return Array.from(elements.curveRows.querySelectorAll('.curve-row'))
-    .map((row) => ({
-      temp: Number(row.querySelector('.curve-temp').value),
-      fan_speed: Number(row.querySelector('.curve-speed').value),
-    }))
-    .filter((point) => Number.isFinite(point.temp) && Number.isFinite(point.fan_speed))
-    .sort((a, b) => a.temp - b.temp);
-}
-
-function fillCurveForm(curve) {
-  elements.curveRows.innerHTML = '';
-  (curve || []).forEach((point) => createCurveRow(point));
-  if (!elements.curveRows.children.length) {
-    createCurveRow();
-  }
-}
-
-function drawCurve() {
-  const canvas = elements.curveCanvas;
-  const ctx = canvas.getContext('2d');
-  const width = canvas.width;
-  const height = canvas.height;
-  const padding = { top: 24, right: 24, bottom: 38, left: 48 };
-  const plotWidth = width - padding.left - padding.right;
-  const plotHeight = height - padding.top - padding.bottom;
-  const curve = getCurveFromForm();
-  const coldColor = normalizeHexColor(elements.coldColorText.value, '#0000FF');
-  const hotColor = normalizeHexColor(elements.hotColorText.value, '#FF0000');
-
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = '#0F172A';
-  ctx.fillRect(0, 0, width, height);
-
-  const temps = curve.map((point) => point.temp);
-  const speeds = curve.map((point) => point.fan_speed);
-  const minTemp = Math.min(...temps, 20);
-  const maxTemp = Math.max(...temps, 100);
-  const tempSpan = Math.max(1, maxTemp - minTemp);
-  const speedMax = Math.max(100, ...speeds);
-
-  ctx.strokeStyle = 'rgba(148, 163, 184, 0.18)';
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 5; i += 1) {
-    const y = padding.top + (plotHeight / 5) * i;
-    ctx.beginPath();
-    ctx.moveTo(padding.left, y);
-    ctx.lineTo(width - padding.right, y);
-    ctx.stroke();
-  }
-
-  ctx.beginPath();
-  ctx.moveTo(padding.left, padding.top);
-  ctx.lineTo(padding.left, height - padding.bottom);
-  ctx.lineTo(width - padding.right, height - padding.bottom);
-  ctx.strokeStyle = 'rgba(226, 232, 240, 0.35)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  ctx.fillStyle = 'rgba(148, 163, 184, 0.9)';
-  ctx.font = '12px Inter, Arial, sans-serif';
-  ctx.fillText('Fan speed %', 10, padding.top - 4);
-  ctx.fillText('Temp °C', width - 78, height - 12);
-
-  if (!curve.length) {
-    return;
-  }
-
-  const points = curve.map((point) => {
-    const x = padding.left + ((point.temp - minTemp) / tempSpan) * plotWidth;
-    const y = height - padding.bottom - (clamp(point.fan_speed, 0, speedMax) / speedMax) * plotHeight;
-    return { x, y, ...point };
-  });
-
-  const gradient = ctx.createLinearGradient(padding.left, 0, width - padding.right, 0);
-  gradient.addColorStop(0, coldColor);
-  gradient.addColorStop(1, hotColor);
-
-  ctx.beginPath();
-  points.forEach((point, index) => {
-    if (index === 0) {
-      ctx.moveTo(point.x, point.y);
-    } else {
-      ctx.lineTo(point.x, point.y);
-    }
-  });
-  ctx.strokeStyle = gradient;
-  ctx.lineWidth = 4;
-  ctx.stroke();
-
-  points.forEach((point, index) => {
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
-    ctx.fillStyle = index === 0 ? coldColor : index === points.length - 1 ? hotColor : '#E5E7EB';
-    ctx.fill();
-    ctx.strokeStyle = '#0B1120';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    ctx.fillStyle = 'rgba(226, 232, 240, 0.9)';
-    ctx.fillText(`${point.temp}°`, point.x - 12, height - padding.bottom + 18);
-    ctx.fillText(`${point.fan_speed}%`, point.x - 14, point.y - 12);
-  });
-}
-
-function applyControllerToForm(controller) {
-  const cold = normalizeHexColor(controller.cold_color, '#0000FF');
-  const hot = normalizeHexColor(controller.hot_color, '#FF0000');
-  elements.coldColor.value = cold;
-  elements.hotColor.value = hot;
-  elements.coldColorText.value = cold;
-  elements.hotColorText.value = hot;
-  fillCurveForm(controller.curve || []);
+  renderInfo();
+  renderRawData();
+  renderArgbControls();
+  renderCurveEditor();
   drawCurve();
 }
 
-function renderDashboard(data) {
-  const { summary, fans, argb, sensor, temp_controller: controller } = data;
-  state.dashboard = data;
+async function refreshDashboard() {
+  const data = await fetchJson("/api/state");
+  state.fan_data = data.fan_data;
+  state.argb_data = data.argb_data;
+  state.sensor_data = data.sensor_data;
+  state.summary = data.summary;
 
-  elements.laptopTemp.textContent = `${Number(summary.laptop_temp).toFixed(2)}°C`;
-  elements.sensorTemp.textContent = `${Number(summary.sensor_temp).toFixed(2)}°C`;
-  elements.fan1Speed.textContent = `${summary.fan_1_speed}%`;
-  elements.fan2Speed.textContent = `${summary.fan_2_speed}%`;
-  elements.currentColor.textContent = summary.current_color;
-  elements.currentColorSwatch.style.background = summary.current_color;
-
-  elements.sensorStateBadge.textContent = sensor.online ? 'Sensor online' : 'Sensor offline';
-  elements.sensorStateBadge.className = `status-badge ${sensor.online ? 'online' : 'offline'}`;
-
-  elements.fanJson.textContent = prettyJson(fans);
-  elements.argbJson.textContent = prettyJson(argb);
-  elements.sensorJson.textContent = prettyJson(sensor);
-  elements.controllerJson.textContent = prettyJson(controller);
-
-  elements.simulatedTemp.value = Math.round(sensor.object_temp);
-  elements.simulatedTempValue.textContent = `${Math.round(sensor.object_temp)}°C`;
-
-  applyControllerToForm(controller);
+  renderInfo();
+  renderRawData();
 }
 
-async function loadDashboard() {
-  const response = await fetch('/dashboard/data');
-  if (!response.ok) {
-    throw new Error('Failed to load dashboard data');
-  }
-  const data = await response.json();
-  renderDashboard(data);
+function renderInfo() {
+  const summary = state.summary;
+  const sensor = state.sensor_data;
+
+  if (!summary || !sensor) return;
+
+  document.getElementById("laptopTemp").textContent = `${summary.laptop_temp.toFixed(2)}°C`;
+  document.getElementById("sensorTemp").textContent = `${summary.sensor_temp.toFixed(2)}°C`;
+
+  document.getElementById("sharedFanSpeed").textContent = `${summary.fan_speed_percent}%`;
+  document.getElementById(
+    "fanSpeedDetail"
+  ).textContent = `Fan 1: ${summary.fan1_rpm} RPM · Fan 2: ${summary.fan2_rpm} RPM`;
+
+  document.getElementById("currentColorHex").textContent = summary.color_hex.toUpperCase();
+  document.getElementById("currentColorSwatch").style.background = summary.color_hex;
+  document.getElementById(
+    "currentColorDetail"
+  ).textContent = `${summary.color_state ? "ON" : "OFF"} · RGB(${summary.color_rgb.r}, ${summary.color_rgb.g}, ${summary.color_rgb.b})`;
+
+  const badge = document.getElementById("sensorOnlineBadge");
+  badge.textContent = sensor.online ? "ONLINE" : "OFFLINE";
+  badge.classList.toggle("online", sensor.online);
+  badge.classList.toggle("offline", !sensor.online);
+
+  document.getElementById(
+    "sensorMeta"
+  ).textContent = `${sensor.module} · Ambient from sensor, object temp used as laptop temp · I2C 0x${Number(sensor.i2c_address)
+    .toString(16)
+    .toUpperCase()} · SDA ${sensor.sda_pin} · SCL ${sensor.scl_pin}`;
 }
 
-async function saveController(event) {
-  event.preventDefault();
+function renderRawData() {
+  if (!state.fan_data || !state.argb_data || !state.sensor_data) return;
+
+  document.getElementById("fanJson").textContent = JSON.stringify(state.fan_data, null, 2);
+  document.getElementById("argbJson").textContent = JSON.stringify(state.argb_data, null, 2);
+  document.getElementById("sensorJson").textContent = JSON.stringify(state.sensor_data, null, 2);
+}
+
+function renderArgbControls() {
+  const zone = state.argb_data?.[0];
+  if (!zone) return;
+
+  argbToggle.checked = zone.state;
+  argbColor.value = rgbToHex(zone.r, zone.g, zone.b);
+}
+
+async function applyArgb() {
   const payload = {
-    cold_color: normalizeHexColor(elements.coldColorText.value, '#0000FF'),
-    hot_color: normalizeHexColor(elements.hotColorText.value, '#FF0000'),
-    curve: getCurveFromForm(),
+    state: argbToggle.checked,
+    hex: argbColor.value,
   };
 
-  if (!payload.curve.length) {
-    setStatus('At least one curve point is required.', 'error');
-    return;
-  }
-
-  const response = await fetch('/temp_controller/data', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const data = await fetchJson("/argb/data", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Failed to save controller' }));
-    setStatus(error.error || 'Failed to save controller', 'error');
-    return;
+  state.argb_data = data.argb_data;
+  renderArgbControls();
+  await refreshDashboard();
+}
+
+function renderCurveEditor() {
+  if (!state.ui_config) return;
+
+  curveStartColor.value = state.ui_config.curve_edge_colors.start;
+  curveEndColor.value = state.ui_config.curve_edge_colors.end;
+  curveGradientBar.style.background = `linear-gradient(90deg, ${curveStartColor.value}, ${curveEndColor.value})`;
+
+  curveTableBody.innerHTML = "";
+
+  const points = sortCurve(state.ui_config.temp_curve);
+
+  points.forEach((point, index) => {
+    const row = document.createElement("tr");
+
+    const tempCell = document.createElement("td");
+    const tempInput = document.createElement("input");
+    tempInput.type = "number";
+    tempInput.min = "0";
+    tempInput.max = "100";
+    tempInput.value = point.temp;
+    tempInput.dataset.index = index;
+    tempInput.dataset.field = "temp";
+    tempInput.addEventListener("input", handleCurveInput);
+    tempCell.appendChild(tempInput);
+
+    const speedCell = document.createElement("td");
+    const speedInput = document.createElement("input");
+    speedInput.type = "number";
+    speedInput.min = "0";
+    speedInput.max = "100";
+    speedInput.value = point.speed;
+    speedInput.dataset.index = index;
+    speedInput.dataset.field = "speed";
+    speedInput.addEventListener("input", handleCurveInput);
+    speedCell.appendChild(speedInput);
+
+    const actionCell = document.createElement("td");
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "btn btn-danger";
+    removeBtn.textContent = "Delete";
+    removeBtn.disabled = points.length <= 2;
+    removeBtn.addEventListener("click", () => {
+      if (state.ui_config.temp_curve.length <= 2) return;
+      state.ui_config.temp_curve.splice(index, 1);
+      renderCurveEditor();
+      drawCurve();
+    });
+    actionCell.appendChild(removeBtn);
+
+    row.appendChild(tempCell);
+    row.appendChild(speedCell);
+    row.appendChild(actionCell);
+
+    curveTableBody.appendChild(row);
+  });
+}
+
+function handleCurveInput(event) {
+  const index = Number(event.target.dataset.index);
+  const field = event.target.dataset.field;
+  const value = Math.max(0, Math.min(100, Number(event.target.value) || 0));
+
+  state.ui_config.temp_curve[index][field] = value;
+  drawCurve();
+}
+
+function getCurvePayload() {
+  return sortCurve(
+    state.ui_config.temp_curve.map((point) => ({
+      temp: Math.max(0, Math.min(100, Number(point.temp))),
+      speed: Math.max(0, Math.min(100, Number(point.speed))),
+    }))
+  );
+}
+
+async function saveCurve() {
+  const payload = {
+    temp_curve: getCurvePayload(),
+    curve_edge_colors: {
+      start: curveStartColor.value,
+      end: curveEndColor.value,
+    },
+  };
+
+  const data = await fetchJson("/ui/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  state.ui_config = data.ui_config;
+  renderCurveEditor();
+  drawCurve();
+  await refreshDashboard();
+}
+
+function drawCurve() {
+  if (!state.ui_config) return;
+
+  const startColor = curveStartColor.value;
+  const endColor = curveEndColor.value;
+  const points = getCurvePayload();
+
+  curveGradientBar.style.background = `linear-gradient(90deg, ${startColor}, ${endColor})`;
+
+  ctx.clearRect(0, 0, curveCanvas.width, curveCanvas.height);
+
+  const pad = { top: 28, right: 24, bottom: 42, left: 56 };
+  const width = curveCanvas.width - pad.left - pad.right;
+  const height = curveCanvas.height - pad.top - pad.bottom;
+
+  const x = (temp) => pad.left + (temp / 100) * width;
+  const y = (speed) => pad.top + height - (speed / 100) * height;
+
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";
+  ctx.lineWidth = 1;
+
+  for (let i = 0; i <= 10; i++) {
+    const xPos = x(i * 10);
+    const yPos = y(i * 10);
+
+    ctx.beginPath();
+    ctx.moveTo(xPos, pad.top);
+    ctx.lineTo(xPos, pad.top + height);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(pad.left, yPos);
+    ctx.lineTo(pad.left + width, yPos);
+    ctx.stroke();
   }
 
-  setStatus('Controller updated.', 'success');
-  await loadDashboard();
-}
+  ctx.fillStyle = "rgba(255,255,255,0.78)";
+  ctx.font = "12px sans-serif";
 
-async function simulateTemperature() {
-  const value = Number(elements.simulatedTemp.value);
-  elements.simulatedTempValue.textContent = `${value}°C`;
-
-  const response = await fetch('/dashboard/simulate_temp', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ object_temp: value }),
-  });
-
-  if (response.ok) {
-    await loadDashboard();
+  for (let i = 0; i <= 10; i++) {
+    const label = i * 10;
+    ctx.fillText(`${label}`, x(label) - 8, pad.top + height + 20);
+    ctx.fillText(`${label}%`, 10, y(label) + 4);
   }
-}
 
-function bindColorMirrors(colorInput, textInput, fallback) {
-  colorInput.addEventListener('input', () => {
-    textInput.value = colorInput.value.toUpperCase();
-    drawCurve();
-  });
+  ctx.fillText("Temp (°C)", curveCanvas.width / 2 - 24, curveCanvas.height - 10);
 
-  textInput.addEventListener('input', () => {
-    const normalized = normalizeHexColor(textInput.value, fallback);
-    if (/^#[0-9A-F]{6}$/.test(String(textInput.value).trim().toUpperCase())) {
-      colorInput.value = normalized;
-    }
-    drawCurve();
-  });
-}
+  ctx.save();
+  ctx.translate(18, curveCanvas.height / 2 + 20);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText("Fan Speed (%)", 0, 0);
+  ctx.restore();
 
-function bindEvents() {
-  elements.refreshButton.addEventListener('click', loadDashboard);
-  elements.controllerForm.addEventListener('submit', saveController);
-  elements.addPointButton.addEventListener('click', () => {
-    createCurveRow();
-    drawCurve();
-  });
+  for (let i = 0; i < points.length - 1; i++) {
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const t = points.length === 1 ? 0 : i / (points.length - 1);
 
-  elements.simulatedTemp.addEventListener('input', () => {
-    elements.simulatedTempValue.textContent = `${elements.simulatedTemp.value}°C`;
-  });
-  elements.simulatedTemp.addEventListener('change', simulateTemperature);
-
-  bindColorMirrors(elements.coldColor, elements.coldColorText, '#0000FF');
-  bindColorMirrors(elements.hotColor, elements.hotColorText, '#FF0000');
-}
-
-async function init() {
-  bindEvents();
-  try {
-    await loadDashboard();
-  } catch (error) {
-    console.error(error);
-    setStatus('Could not load dashboard data.', 'error');
+    ctx.strokeStyle = interpolateColor(startColor, endColor, t);
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x(p1.temp), y(p1.speed));
+    ctx.lineTo(x(p2.temp), y(p2.speed));
+    ctx.stroke();
   }
+
+  points.forEach((point, index) => {
+    const t = points.length === 1 ? 0 : index / (points.length - 1);
+
+    ctx.beginPath();
+    ctx.fillStyle = interpolateColor(startColor, endColor, t);
+    ctx.arc(x(point.temp), y(point.speed), 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#0d1326";
+    ctx.stroke();
+  });
 }
 
-init();
+refreshBtn.addEventListener("click", refreshDashboard);
+applyArgbBtn.addEventListener("click", applyArgb);
+
+curveStartColor.addEventListener("input", drawCurve);
+curveEndColor.addEventListener("input", drawCurve);
+
+addPointBtn.addEventListener("click", () => {
+  state.ui_config.temp_curve.push({ temp: 70, speed: 100 });
+  renderCurveEditor();
+  drawCurve();
+});
+
+saveCurveBtn.addEventListener("click", saveCurve);
+
+loadInitialState();
+setInterval(refreshDashboard, 2500);

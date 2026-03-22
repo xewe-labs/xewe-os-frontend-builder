@@ -1,168 +1,139 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Laptop Cooling Pad UI</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body>
-  <main class="page-shell">
-    <header class="page-header">
+  <div class="page">
+    <header class="header">
       <div>
-        <p class="eyebrow">Dummy Flask Frontend</p>
-        <h1>Laptop Cooling Pad Control</h1>
-        <p class="subtext">Shared fan and ARGB control driven by one temperature curve.</p>
+        <p class="eyebrow">Dummy Flask UI</p>
+        <h1>Laptop Cooling Pad Dashboard</h1>
       </div>
-      <button id="refreshButton" class="secondary-button" type="button">Refresh</button>
+      <button id="refreshBtn" class="btn btn-secondary">Refresh</button>
     </header>
 
-    <section class="grid two-column">
-      <article class="card">
-        <div class="card-header">
-          <div>
-            <p class="eyebrow">Info Dashboard</p>
-            <h2>Runtime Status</h2>
-          </div>
-          <span id="sensorStateBadge" class="status-badge">Sensor --</span>
+    <main class="grid">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Info Dashboard</h2>
+          <span id="sensorOnlineBadge" class="badge">--</span>
         </div>
 
-        <div class="stat-grid">
-          <div class="stat-box">
-            <span class="stat-label">Laptop temp</span>
+        <div class="stats">
+          <div class="stat-card">
+            <span class="label">Laptop Temp</span>
             <strong id="laptopTemp">--</strong>
           </div>
-          <div class="stat-box">
-            <span class="stat-label">Sensor temp</span>
+
+          <div class="stat-card">
+            <span class="label">Sensor Temp</span>
             <strong id="sensorTemp">--</strong>
           </div>
-          <div class="stat-box">
-            <span class="stat-label">Fan 1 speed</span>
-            <strong id="fan1Speed">--</strong>
+
+          <div class="stat-card">
+            <span class="label">Fan Speed</span>
+            <strong id="sharedFanSpeed">--</strong>
+            <small id="fanSpeedDetail">--</small>
           </div>
-          <div class="stat-box">
-            <span class="stat-label">Fan 2 speed</span>
-            <strong id="fan2Speed">--</strong>
-          </div>
-          <div class="stat-box stat-box-wide">
-            <span class="stat-label">Current color</span>
-            <div class="color-readout">
-              <span id="currentColorSwatch" class="color-swatch"></span>
-              <strong id="currentColor">--</strong>
+
+          <div class="stat-card">
+            <span class="label">Current Color</span>
+            <div class="color-line">
+              <span id="currentColorSwatch" class="swatch"></span>
+              <strong id="currentColorHex">--</strong>
             </div>
-          </div>
-          <div class="stat-box stat-box-wide">
-            <span class="stat-label">Shared devices</span>
-            <strong id="sharedBehavior">Both fans and both LED strips follow one controller.</strong>
+            <small id="currentColorDetail">--</small>
           </div>
         </div>
 
-        <div class="details-grid">
-          <div>
-            <h3>Fan backend data</h3>
-            <pre id="fanJson" class="json-box"></pre>
+        <div class="sensor-meta" id="sensorMeta"></div>
+
+        <div class="raw-grid">
+          <div class="raw-card">
+            <div class="raw-title">fan/data</div>
+            <pre id="fanJson"></pre>
           </div>
-          <div>
-            <h3>ARGB backend data</h3>
-            <pre id="argbJson" class="json-box"></pre>
+
+          <div class="raw-card">
+            <div class="raw-title">argb/data</div>
+            <pre id="argbJson"></pre>
           </div>
-          <div>
-            <h3>Sensor backend data</h3>
-            <pre id="sensorJson" class="json-box"></pre>
-          </div>
-          <div>
-            <h3>Temp controller data</h3>
-            <pre id="controllerJson" class="json-box"></pre>
+
+          <div class="raw-card">
+            <div class="raw-title">/mlx90614/data</div>
+            <pre id="sensorJson"></pre>
           </div>
         </div>
-      </article>
+      </section>
 
-      <article class="card">
-        <div class="card-header">
-          <div>
-            <p class="eyebrow">Control Dashboard</p>
-            <h2>Curve and Color Setup</h2>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Control Dashboard</h2>
+          <span class="subtle">Shared fan curve + shared ARGB</span>
+        </div>
+
+        <div class="control-block">
+          <h3>LED Control</h3>
+          <div class="led-row">
+            <label class="switch-row">
+              <span>LED State</span>
+              <input id="argbToggle" type="checkbox" />
+            </label>
+
+            <label class="field">
+              <span>Color</span>
+              <input id="argbColor" type="color" />
+            </label>
+
+            <button id="applyArgbBtn" class="btn btn-primary">Apply LED</button>
           </div>
         </div>
 
-        <form id="controllerForm" class="control-stack">
-          <div class="control-row two-up">
-            <label class="field">
-              <span>Cold edge color</span>
-              <div class="color-input-row">
-                <input id="coldColor" name="coldColor" type="color" value="#0000ff">
-                <input id="coldColorText" type="text" value="#0000FF" maxlength="7">
-              </div>
-            </label>
-            <label class="field">
-              <span>Hot edge color</span>
-              <div class="color-input-row">
-                <input id="hotColor" name="hotColor" type="color" value="#ff0000">
-                <input id="hotColorText" type="text" value="#FF0000" maxlength="7">
-              </div>
-            </label>
-          </div>
+        <div class="control-block">
+          <div class="curve-head">
+            <h3>Temperature Curve</h3>
+            <div class="curve-color-pickers">
+              <label class="field inline-field">
+                <span>Edge 1</span>
+                <input id="curveStartColor" type="color" />
+              </label>
 
-          <div class="curve-card">
-            <div class="curve-toolbar">
-              <div>
-                <h3>Temperature curve</h3>
-                <p>One curve drives both fans. Speed is percent.</p>
-              </div>
-              <button id="addPointButton" class="secondary-button" type="button">Add point</button>
-            </div>
-
-            <div id="curveRows" class="curve-rows"></div>
-          </div>
-
-          <div class="curve-preview-card">
-            <div class="curve-preview-header">
-              <div>
-                <h3>Curve preview</h3>
-                <p>Gradient line uses the two edge colors.</p>
-              </div>
-            </div>
-            <canvas id="curveCanvas" width="760" height="320"></canvas>
-          </div>
-
-          <div class="control-row two-up">
-            <label class="field">
-              <span>Simulated laptop temp</span>
-              <input id="simulatedTemp" type="range" min="20" max="100" step="1" value="24">
-              <div class="slider-readout">
-                <strong id="simulatedTempValue">24°C</strong>
-                <span>Updates dashboard only for demo purposes.</span>
-              </div>
-            </label>
-            <div class="field field-note">
-              <span>Behavior note</span>
-              <p>There is no individual fan speed or strip color control. Both fans always use the same speed, and both ARGB strips always use the same color.</p>
+              <label class="field inline-field">
+                <span>Edge 2</span>
+                <input id="curveEndColor" type="color" />
+              </label>
             </div>
           </div>
 
-          <div class="form-actions">
-            <button class="primary-button" type="submit">Save controller</button>
-            <p id="saveStatus" class="save-status"></p>
+          <div class="curve-canvas-wrap">
+            <canvas id="curveCanvas" width="820" height="380"></canvas>
+            <div id="curveGradientBar" class="gradient-bar"></div>
           </div>
-        </form>
-      </article>
-    </section>
-  </main>
 
-  <template id="curveRowTemplate">
-    <div class="curve-row">
-      <label class="field compact-field">
-        <span>Temp (°C)</span>
-        <input class="curve-temp" type="number" min="0" max="120" step="1" value="40">
-      </label>
-      <label class="field compact-field">
-        <span>Fan speed (%)</span>
-        <input class="curve-speed" type="number" min="0" max="100" step="1" value="50">
-      </label>
-      <button class="danger-button remove-point-button" type="button">Remove</button>
-    </div>
-  </template>
+          <table class="curve-table">
+            <thead>
+              <tr>
+                <th>Temp (°C)</th>
+                <th>Fan (%)</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="curveTableBody"></tbody>
+          </table>
 
-  <script src="/script.js"></script>
+          <div class="curve-actions">
+            <button id="addPointBtn" class="btn btn-secondary">Add Point</button>
+            <button id="saveCurveBtn" class="btn btn-primary">Save Curve</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

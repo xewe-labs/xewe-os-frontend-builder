@@ -1,16 +1,15 @@
-from __future__ import annotations
-
 from copy import deepcopy
-from pathlib import Path
-from typing import Any
+import math
+import time
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, render_template, request
 
-BASE_DIR = Path(__file__).resolve().parent
 app = Flask(__name__)
 
-# Embedded dummy backend data
-INITIAL_FAN_DATA = {
+# ------------------------------------------------------------
+# Embedded backend data
+# ------------------------------------------------------------
+FAN_DATA = {
     "fans": [
         {
             "pin_pwm": 3,
@@ -31,12 +30,12 @@ INITIAL_FAN_DATA = {
     ]
 }
 
-INITIAL_ARGB_DATA = [
+ARGB_DATA = [
     {"pin": 6, "state": False, "r": 255, "g": 255, "b": 255},
     {"pin": 7, "state": False, "r": 255, "g": 255, "b": 255},
 ]
 
-INITIAL_SENSOR_DATA = {
+MLX90614_DATA = {
     "module": "MLX90614",
     "online": True,
     "object_temp": 23.79001,
@@ -46,230 +45,279 @@ INITIAL_SENSOR_DATA = {
     "scl_pin": 5,
 }
 
-INITIAL_TEMP_CONTROLLER_DATA = {
-    "cold_color": "#0000FF",
-    "hot_color": "#FF0000",
-    "curve": [{"temp": 41, "fan_speed": 50}],
+UI_CONFIG = {
+    "temp_curve": [
+        {"temp": 25, "speed": 0},
+        {"temp": 35, "speed": 25},
+        {"temp": 45, "speed": 45},
+        {"temp": 55, "speed": 70},
+        {"temp": 65, "speed": 100},
+    ],
+    "curve_edge_colors": {
+        "start": "#00c2ff",
+        "end": "#ff5a7a",
+    },
 }
 
-STATE = {
-    "fan_data": deepcopy(INITIAL_FAN_DATA),
-    "argb_data": deepcopy(INITIAL_ARGB_DATA),
-    "sensor_data": deepcopy(INITIAL_SENSOR_DATA),
-    "temp_controller": deepcopy(INITIAL_TEMP_CONTROLLER_DATA),
-}
+APP_START = time.time()
 
 
-def clamp(value: float, minimum: float, maximum: float) -> float:
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+def clamp(value, minimum, maximum):
     return max(minimum, min(maximum, value))
 
 
-def hex_to_rgb(color: str) -> tuple[int, int, int]:
-    color = color.strip().lstrip("#")
-    if len(color) != 6:
-        raise ValueError("Color must be a 6-digit hex value.")
-    return tuple(int(color[i : i + 2], 16) for i in (0, 2, 4))
-
-
-def rgb_to_hex(rgb: tuple[int, int, int]) -> str:
-    return "#" + "".join(f"{clamp(int(channel), 0, 255):02X}" for channel in rgb)
-
-
-def normalize_curve(curve: list[dict[str, Any]]) -> list[dict[str, int]]:
-    normalized: list[dict[str, int]] = []
-    for point in curve:
-        temp = int(round(float(point["temp"])))
-        fan_speed = int(round(float(point["fan_speed"])))
-        normalized.append(
-            {
-                "temp": temp,
-                "fan_speed": int(clamp(fan_speed, 0, 100)),
-            }
-        )
-    normalized.sort(key=lambda item: item["temp"])
-    return normalized
-
-
-def interpolate(a: float, b: float, ratio: float) -> float:
-    return a + (b - a) * ratio
-
-
-def fan_speed_from_curve(temp: float, curve: list[dict[str, int]]) -> int:
-    if not curve:
-        return 0
-
-    if len(curve) == 1:
-        return curve[0]["fan_speed"] if temp >= curve[0]["temp"] else 0
-
-    if temp <= curve[0]["temp"]:
-        return curve[0]["fan_speed"]
-
-    for left, right in zip(curve, curve[1:]):
-        if left["temp"] <= temp <= right["temp"]:
-            span = max(1, right["temp"] - left["temp"])
-            ratio = (temp - left["temp"]) / span
-            return int(round(interpolate(left["fan_speed"], right["fan_speed"], ratio)))
-
-    return curve[-1]["fan_speed"]
-
-
-def color_from_temp(temp: float, curve: list[dict[str, int]], cold_color: str, hot_color: str) -> str:
-    cold_rgb = hex_to_rgb(cold_color)
-    hot_rgb = hex_to_rgb(hot_color)
-
-    if not curve:
-        return cold_color.upper()
-
-    if len(curve) == 1:
-        ratio = 1.0 if temp >= curve[0]["temp"] else 0.0
-    else:
-        low_temp = curve[0]["temp"]
-        high_temp = curve[-1]["temp"]
-        if high_temp == low_temp:
-            ratio = 1.0 if temp >= high_temp else 0.0
-        else:
-            ratio = clamp((temp - low_temp) / (high_temp - low_temp), 0.0, 1.0)
-
-    mixed = tuple(int(round(interpolate(cold_rgb[i], hot_rgb[i], ratio))) for i in range(3))
-    return rgb_to_hex(mixed)
-
-
-def sync_runtime_state() -> None:
-    controller = STATE["temp_controller"]
-    sensor = STATE["sensor_data"]
-    fans = STATE["fan_data"]["fans"]
-    strips = STATE["argb_data"]
-
-    curve = normalize_curve(controller["curve"])
-    controller["curve"] = curve
-
-    object_temp = float(sensor["object_temp"])
-    shared_speed = fan_speed_from_curve(object_temp, curve)
-    current_color = color_from_temp(
-        object_temp,
-        curve,
-        controller["cold_color"],
-        controller["hot_color"],
+def rgb_to_hex(r, g, b):
+    return "#{:02x}{:02x}{:02x}".format(
+        int(clamp(r, 0, 255)),
+        int(clamp(g, 0, 255)),
+        int(clamp(b, 0, 255)),
     )
-    r, g, b = hex_to_rgb(current_color)
-
-    for fan in fans:
-        fan["speed"] = shared_speed
-        fan["displayed_rpm"] = shared_speed * 50
-        fan["ema_rpm"] = fan["displayed_rpm"]
-
-    for strip in strips:
-        strip["state"] = shared_speed > 0
-        strip["r"] = r
-        strip["g"] = g
-        strip["b"] = b
 
 
-sync_runtime_state()
+def normalize_hex_color(value, default="#ffffff"):
+    if not isinstance(value, str):
+        return default
 
+    value = value.strip()
+    if not value.startswith("#"):
+        value = f"#{value}"
 
-@app.route("/")
-def index() -> Any:
-    return send_from_directory(BASE_DIR, "templates/index.html")
-
-
-@app.route("/styles.css")
-def styles() -> Any:
-    return send_from_directory(BASE_DIR, "static/styles.css")
-
-
-@app.route("/script.js")
-def script() -> Any:
-    return send_from_directory(BASE_DIR, "static/script.js")
-
-
-@app.get("/fan/data")
-def get_fan_data() -> Any:
-    sync_runtime_state()
-    return jsonify(STATE["fan_data"])
-
-
-@app.get("/argb/data")
-def get_argb_data() -> Any:
-    sync_runtime_state()
-    return jsonify(STATE["argb_data"])
-
-
-@app.get("/mlx90614/data")
-def get_sensor_data() -> Any:
-    return jsonify(STATE["sensor_data"])
-
-
-@app.get("/temp_controller/data")
-def get_temp_controller_data() -> Any:
-    sync_runtime_state()
-    return jsonify(STATE["temp_controller"])
-
-
-@app.post("/temp_controller/data")
-def update_temp_controller_data() -> Any:
-    payload = request.get_json(silent=True) or {}
-
-    cold_color = str(payload.get("cold_color", STATE["temp_controller"]["cold_color"])).strip()
-    hot_color = str(payload.get("hot_color", STATE["temp_controller"]["hot_color"])).strip()
-    curve = payload.get("curve", STATE["temp_controller"]["curve"])
-
-    if not isinstance(curve, list) or not curve:
-        return jsonify({"error": "curve must be a non-empty array"}), 400
+    if len(value) != 7:
+        return default
 
     try:
-        hex_to_rgb(cold_color)
-        hex_to_rgb(hot_color)
-        normalized_curve = normalize_curve(curve)
-    except (ValueError, KeyError, TypeError):
-        return jsonify({"error": "invalid payload"}), 400
+        int(value[1:], 16)
+        return value.lower()
+    except ValueError:
+        return default
 
-    STATE["temp_controller"] = {
-        "cold_color": "#" + cold_color.lstrip("#").upper(),
-        "hot_color": "#" + hot_color.lstrip("#").upper(),
-        "curve": normalized_curve,
+
+def hex_to_rgb(value):
+    value = normalize_hex_color(value, "#ffffff")
+    return {
+        "r": int(value[1:3], 16),
+        "g": int(value[3:5], 16),
+        "b": int(value[5:7], 16),
     }
-    sync_runtime_state()
-    return jsonify(STATE["temp_controller"])
 
 
-@app.get("/dashboard/data")
-def get_dashboard_data() -> Any:
-    sync_runtime_state()
-    fans = STATE["fan_data"]["fans"]
-    argb = STATE["argb_data"]
-    controller = STATE["temp_controller"]
-    current_color = rgb_to_hex((argb[0]["r"], argb[0]["g"], argb[0]["b"]))
+def get_current_argb():
+    zone = ARGB_DATA[0]
+    return {
+        "state": zone["state"],
+        "r": zone["r"],
+        "g": zone["g"],
+        "b": zone["b"],
+        "hex": rgb_to_hex(zone["r"], zone["g"], zone["b"]),
+    }
 
-    return jsonify(
-        {
-            "sensor": STATE["sensor_data"],
-            "fans": STATE["fan_data"],
-            "argb": STATE["argb_data"],
-            "temp_controller": controller,
-            "summary": {
-                "laptop_temp": STATE["sensor_data"]["object_temp"],
-                "sensor_temp": STATE["sensor_data"]["ambient_temp"],
-                "fan_1_speed": fans[0]["speed"] if fans else 0,
-                "fan_2_speed": fans[1]["speed"] if len(fans) > 1 else 0,
-                "current_color": current_color,
-                "argb_enabled": any(strip["state"] for strip in argb),
-            },
-        }
+
+def set_all_argb(state, r, g, b):
+    for zone in ARGB_DATA:
+        zone["state"] = bool(state)
+        zone["r"] = int(clamp(r, 0, 255))
+        zone["g"] = int(clamp(g, 0, 255))
+        zone["b"] = int(clamp(b, 0, 255))
+
+
+def set_all_fans(speed):
+    speed = int(clamp(speed, 0, 100))
+
+    for fan in FAN_DATA["fans"]:
+        fan["speed"] = speed
+
+        rpm = 0 if speed == 0 else int(400 + (speed / 100.0) * 2400)
+        previous_ema = fan["ema_rpm"]
+        ema = rpm if previous_ema == 0 else int(previous_ema * 0.7 + rpm * 0.3)
+
+        fan["displayed_rpm"] = rpm
+        fan["ema_rpm"] = ema
+
+
+def curve_speed_for_temp(temp, curve_points):
+    points = sorted(curve_points, key=lambda x: x["temp"])
+
+    if temp <= points[0]["temp"]:
+        return int(points[0]["speed"])
+
+    if temp >= points[-1]["temp"]:
+        return int(points[-1]["speed"])
+
+    for i in range(len(points) - 1):
+        left = points[i]
+        right = points[i + 1]
+
+        if left["temp"] <= temp <= right["temp"]:
+            span = right["temp"] - left["temp"]
+            if span == 0:
+                return int(right["speed"])
+
+            ratio = (temp - left["temp"]) / span
+            speed = left["speed"] + ratio * (right["speed"] - left["speed"])
+            return int(round(speed))
+
+    return int(points[-1]["speed"])
+
+
+def simulate_sensor():
+    """
+    Dummy behavior:
+    - Object temp drifts based on a fake heat load.
+    - Fan curve automatically sets BOTH fans to the same speed.
+    - Ambient temp moves more slowly.
+    """
+    elapsed = time.time() - APP_START
+    current_fan_speed = FAN_DATA["fans"][0]["speed"]
+
+    heat_wave = 31.5 + math.sin(elapsed / 7.0) * 5.5
+    target_object = heat_wave - current_fan_speed * 0.08
+    target_ambient = 29.5 + math.cos(elapsed / 9.0) * 1.2 - current_fan_speed * 0.015
+
+    MLX90614_DATA["object_temp"] += (target_object - MLX90614_DATA["object_temp"]) * 0.08
+    MLX90614_DATA["ambient_temp"] += (target_ambient - MLX90614_DATA["ambient_temp"]) * 0.04
+
+    auto_speed = curve_speed_for_temp(
+        MLX90614_DATA["object_temp"],
+        UI_CONFIG["temp_curve"],
     )
+    set_all_fans(auto_speed)
+
+    snapshot = deepcopy(MLX90614_DATA)
+    snapshot["object_temp"] = round(snapshot["object_temp"], 2)
+    snapshot["ambient_temp"] = round(snapshot["ambient_temp"], 2)
+    return snapshot
 
 
-@app.post("/dashboard/simulate_temp")
-def simulate_temp() -> Any:
+def get_summary():
+    current_argb = get_current_argb()
+    fan_rpms = [fan["displayed_rpm"] for fan in FAN_DATA["fans"]]
+    shared_speed = FAN_DATA["fans"][0]["speed"] if FAN_DATA["fans"] else 0
+
+    return {
+        "laptop_temp": round(MLX90614_DATA["object_temp"], 2),
+        "sensor_temp": round(MLX90614_DATA["ambient_temp"], 2),
+        "fan_speed_percent": shared_speed,
+        "fan1_rpm": fan_rpms[0] if len(fan_rpms) > 0 else 0,
+        "fan2_rpm": fan_rpms[1] if len(fan_rpms) > 1 else 0,
+        "color_hex": current_argb["hex"],
+        "color_state": current_argb["state"],
+        "color_rgb": {
+            "r": current_argb["r"],
+            "g": current_argb["g"],
+            "b": current_argb["b"],
+        },
+    }
+
+
+def get_full_state():
+    sensor = simulate_sensor()
+    return {
+        "fan_data": deepcopy(FAN_DATA),
+        "argb_data": deepcopy(ARGB_DATA),
+        "sensor_data": sensor,
+        "ui_config": deepcopy(UI_CONFIG),
+        "summary": get_summary(),
+    }
+
+
+# ------------------------------------------------------------
+# Routes
+# ------------------------------------------------------------
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/api/state", methods=["GET"])
+def api_state():
+    return jsonify(get_full_state())
+
+
+@app.route("/fan/data", methods=["GET", "POST"])
+def fan_data():
+    if request.method == "GET":
+        return jsonify(deepcopy(FAN_DATA))
+
     payload = request.get_json(silent=True) or {}
-    try:
-        object_temp = float(payload.get("object_temp", STATE["sensor_data"]["object_temp"]))
-    except (TypeError, ValueError):
-        return jsonify({"error": "object_temp must be numeric"}), 400
 
-    STATE["sensor_data"]["object_temp"] = round(object_temp, 2)
-    sync_runtime_state()
-    return jsonify(STATE["sensor_data"])
+    # Shared fan control only
+    if "speed" not in payload:
+        return jsonify({"ok": False, "error": "Expected shared speed"}), 400
+
+    set_all_fans(payload["speed"])
+    return jsonify({"ok": True, "fan_data": deepcopy(FAN_DATA)})
+
+
+@app.route("/argb/data", methods=["GET", "POST"])
+def argb_data():
+    if request.method == "GET":
+        return jsonify(deepcopy(ARGB_DATA))
+
+    payload = request.get_json(silent=True) or {}
+
+    color_hex = normalize_hex_color(payload.get("hex", "#ffffff"), "#ffffff")
+    rgb = hex_to_rgb(color_hex)
+    state = bool(payload.get("state", False))
+
+    if "r" in payload:
+        rgb["r"] = int(clamp(payload["r"], 0, 255))
+    if "g" in payload:
+        rgb["g"] = int(clamp(payload["g"], 0, 255))
+    if "b" in payload:
+        rgb["b"] = int(clamp(payload["b"], 0, 255))
+
+    set_all_argb(state, rgb["r"], rgb["g"], rgb["b"])
+    return jsonify({"ok": True, "argb_data": deepcopy(ARGB_DATA)})
+
+
+@app.route("/mlx90614/data", methods=["GET"])
+def mlx90614_data():
+    return jsonify(simulate_sensor())
+
+
+@app.route("/ui/config", methods=["GET", "POST"])
+def ui_config():
+    if request.method == "GET":
+        return jsonify(deepcopy(UI_CONFIG))
+
+    payload = request.get_json(silent=True) or {}
+
+    if "temp_curve" in payload:
+        curve = payload["temp_curve"]
+
+        if not isinstance(curve, list) or len(curve) < 2:
+            return jsonify({"ok": False, "error": "temp_curve must have at least 2 points"}), 400
+
+        cleaned = []
+        for point in curve:
+            if not isinstance(point, dict):
+                continue
+
+            temp = int(clamp(point.get("temp", 0), 0, 100))
+            speed = int(clamp(point.get("speed", 0), 0, 100))
+            cleaned.append({"temp": temp, "speed": speed})
+
+        if len(cleaned) < 2:
+            return jsonify({"ok": False, "error": "Not enough valid curve points"}), 400
+
+        cleaned.sort(key=lambda x: x["temp"])
+        UI_CONFIG["temp_curve"] = cleaned
+
+    if "curve_edge_colors" in payload and isinstance(payload["curve_edge_colors"], dict):
+        colors = payload["curve_edge_colors"]
+        UI_CONFIG["curve_edge_colors"]["start"] = normalize_hex_color(
+            colors.get("start", UI_CONFIG["curve_edge_colors"]["start"]),
+            UI_CONFIG["curve_edge_colors"]["start"],
+        )
+        UI_CONFIG["curve_edge_colors"]["end"] = normalize_hex_color(
+            colors.get("end", UI_CONFIG["curve_edge_colors"]["end"]),
+            UI_CONFIG["curve_edge_colors"]["end"],
+        )
+
+    return jsonify({"ok": True, "ui_config": deepcopy(UI_CONFIG)})
 
 
 if __name__ == "__main__":
