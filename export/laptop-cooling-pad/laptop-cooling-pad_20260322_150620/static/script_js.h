@@ -1,3 +1,6 @@
+#pragma once
+#include <pgmspace.h>
+static const char SCRIPT_JS[] PROGMEM = R"rawliteral(
 const state = {
   fan_data: null,
   argb_data: null,
@@ -453,3 +456,4 @@ window.addEventListener("resize", drawCurve);
 
 loadState();
 setInterval(loadState, 1000);
+)rawliteral";

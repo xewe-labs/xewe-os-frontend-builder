@@ -1,3 +1,6 @@
+#pragma once
+#include <pgmspace.h>
+static const char SCRIPT_JS[] PROGMEM = R"rawliteral(
 const state = {
   fan_data: null,
   argb_data: null,
@@ -420,13 +423,8 @@ function drawCurve() {
   ctx.fillText(`${liveSpeed.toFixed(0)}%`, pad.left - 12, liveY);
 }
 
-// UPDATE CANVAS LIVE WHILE DRAGGING
 curveStartColor.addEventListener("input", drawCurve);
 curveEndColor.addEventListener("input", drawCurve);
-
-// PUSH TO BACKEND ONCE SELECTION IS CONFIRMED/RELEASED
-curveStartColor.addEventListener("change", saveCurve);
-curveEndColor.addEventListener("change", saveCurve);
 
 addPointBtn.addEventListener("click", () => {
   if (!state.ui_config) return;
@@ -453,3 +451,4 @@ window.addEventListener("resize", drawCurve);
 
 loadState();
 setInterval(loadState, 1000);
+)rawliteral";
