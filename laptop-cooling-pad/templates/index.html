@@ -15,74 +15,16 @@
       </div>
     </header>
 
-    <main class="grid">
+    <main class="single-panel-layout">
       <section class="panel">
         <div class="panel-head">
-          <h2>Info Dashboard</h2>
-          <span id="sensorOnlineBadge" class="badge">--</span>
-        </div>
-
-        <div class="info-sections">
-          <div class="info-section">
-            <div class="info-section-title">Temperatures</div>
-            <div class="info-row">
-              <div class="info-card">
-                <span class="label">Laptop Temp</span>
-                <strong id="laptopTemp">--</strong>
-              </div>
-
-              <div class="info-card">
-                <span class="label">Sensor Temp</span>
-                <strong id="sensorTemp">--</strong>
-              </div>
-            </div>
-          </div>
-
-          <div class="info-section">
-            <div class="info-section-title">Fan RPM</div>
-            <div class="info-row">
-              <div class="info-card">
-                <span class="label">Fan 1</span>
-                <strong id="fan1Summary">--</strong>
-              </div>
-
-              <div class="info-card">
-                <span class="label">Fan 2</span>
-                <strong id="fan2Summary">--</strong>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="sensor-meta" id="sensorMeta"></div>
-
-        <div class="raw-grid">
-          <div class="raw-card">
-            <div class="raw-title">fan/data</div>
-            <pre id="fanJson"></pre>
-          </div>
-
-          <div class="raw-card">
-            <div class="raw-title">argb/data</div>
-            <pre id="argbJson"></pre>
-          </div>
-
-          <div class="raw-card">
-            <div class="raw-title">/mlx90614/data</div>
-            <pre id="sensorJson"></pre>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Control Dashboard</h2>
-          <span class="subtle">Curve points + 2 edge colors only</span>
+          <h2>Temperature Curve</h2>
+          <span class="subtle">Live point = laptop temp + current fan speed</span>
         </div>
 
         <div class="control-block">
           <div class="curve-head">
-            <h3>Temperature Curve</h3>
+            <h3>Curve Editor</h3>
             <div class="curve-color-pickers">
               <label class="field inline-field">
                 <span>Edge 1</span>
@@ -97,7 +39,7 @@
           </div>
 
           <div class="curve-canvas-wrap">
-            <canvas id="curveCanvas" width="820" height="380"></canvas>
+            <canvas id="curveCanvas" width="960" height="440"></canvas>
             <div id="curveGradientBar" class="gradient-bar"></div>
           </div>
 

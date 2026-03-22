@@ -56,54 +56,9 @@ async function loadState() {
   if (!state.ui_config) {
     state.ui_config = data.ui_config;
     renderCurveEditor();
-    drawCurve();
   }
 
-  renderInfo();
-  renderRawData();
-}
-
-function renderInfo() {
-  const fans = state.fan_data?.fans || [];
-  const sensor = state.sensor_data;
-
-  if (!sensor) return;
-
-  const fan1 = fans[0] || {};
-  const fan2 = fans[1] || {};
-
-  const laptopTemp = Number(sensor.object_temp || 0);
-  const sensorTemp = Number(sensor.ambient_temp || 0);
-
-  const fan1Rpm = Number(fan1.displayed_rpm || 0);
-  const fan2Rpm = Number(fan2.displayed_rpm || 0);
-  const fan1Pct = Number(fan1.speed || 0);
-  const fan2Pct = Number(fan2.speed || 0);
-
-  document.getElementById("laptopTemp").textContent = `${laptopTemp.toFixed(2)}°C`;
-  document.getElementById("sensorTemp").textContent = `${sensorTemp.toFixed(2)}°C`;
-
-  document.getElementById("fan1Summary").textContent = `${fan1Rpm} RPM (${fan1Pct}%)`;
-  document.getElementById("fan2Summary").textContent = `${fan2Rpm} RPM (${fan2Pct}%)`;
-
-  const badge = document.getElementById("sensorOnlineBadge");
-  badge.textContent = sensor.online ? "ONLINE" : "OFFLINE";
-  badge.classList.toggle("online", !!sensor.online);
-  badge.classList.toggle("offline", !sensor.online);
-
-  document.getElementById(
-    "sensorMeta"
-  ).textContent = `${sensor.module} · I2C 0x${Number(sensor.i2c_address)
-    .toString(16)
-    .toUpperCase()} · SDA ${sensor.sda_pin} · SCL ${sensor.scl_pin}`;
-}
-
-function renderRawData() {
-  if (!state.fan_data || !state.argb_data || !state.sensor_data) return;
-
-  document.getElementById("fanJson").textContent = JSON.stringify(state.fan_data, null, 2);
-  document.getElementById("argbJson").textContent = JSON.stringify(state.argb_data, null, 2);
-  document.getElementById("sensorJson").textContent = JSON.stringify(state.sensor_data, null, 2);
+  drawCurve();
 }
 
 function renderCurveEditor() {
@@ -212,7 +167,7 @@ function drawCurve() {
 
   ctx.clearRect(0, 0, curveCanvas.width, curveCanvas.height);
 
-  const pad = { top: 28, right: 24, bottom: 42, left: 56 };
+  const pad = { top: 28, right: 28, bottom: 48, left: 60 };
   const width = curveCanvas.width - pad.left - pad.right;
   const height = curveCanvas.height - pad.top - pad.bottom;
 
@@ -221,6 +176,7 @@ function drawCurve() {
 
   ctx.strokeStyle = "rgba(255,255,255,0.08)";
   ctx.lineWidth = 1;
+  ctx.setLineDash([]);
 
   for (let i = 0; i <= 10; i++) {
     const xPos = x(i * 10);
@@ -242,14 +198,14 @@ function drawCurve() {
 
   for (let i = 0; i <= 10; i++) {
     const label = i * 10;
-    ctx.fillText(`${label}`, x(label) - 8, pad.top + height + 20);
-    ctx.fillText(`${label}%`, 10, y(label) + 4);
+    ctx.fillText(`${label}`, x(label) - 8, pad.top + height + 22);
+    ctx.fillText(`${label}%`, 12, y(label) + 4);
   }
 
-  ctx.fillText("Temp (°C)", curveCanvas.width / 2 - 24, curveCanvas.height - 10);
+  ctx.fillText("Temp (°C)", curveCanvas.width / 2 - 24, curveCanvas.height - 12);
 
   ctx.save();
-  ctx.translate(18, curveCanvas.height / 2 + 20);
+  ctx.translate(20, curveCanvas.height / 2 + 20);
   ctx.rotate(-Math.PI / 2);
   ctx.fillText("Fan Speed (%)", 0, 0);
   ctx.restore();
@@ -262,6 +218,7 @@ function drawCurve() {
     ctx.strokeStyle = interpolateColor(startColor, endColor, t);
     ctx.lineWidth = 4;
     ctx.lineCap = "round";
+    ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(x(p1.temp), y(p1.speed));
     ctx.lineTo(x(p2.temp), y(p2.speed));
@@ -278,8 +235,44 @@ function drawCurve() {
 
     ctx.lineWidth = 2;
     ctx.strokeStyle = "#0d1326";
+    ctx.setLineDash([]);
     ctx.stroke();
   });
+
+  const liveTemp = clamp(Number(state.sensor_data?.object_temp || 0), 0, 100);
+  const liveSpeed = clamp(Number(state.fan_data?.fans?.[0]?.speed || 0), 0, 100);
+
+  const liveX = x(liveTemp);
+  const liveY = y(liveSpeed);
+
+  ctx.setLineDash([6, 6]);
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+
+  ctx.beginPath();
+  ctx.moveTo(liveX, liveY);
+  ctx.lineTo(liveX, pad.top + height);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(pad.left, liveY);
+  ctx.lineTo(liveX, liveY);
+  ctx.stroke();
+
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.fillStyle = "#ffffff";
+  ctx.arc(liveX, liveY, 7, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#0d1326";
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.font = "12px sans-serif";
+  ctx.fillText(`${liveTemp.toFixed(1)}°C`, liveX - 18, pad.top + height + 18);
+  ctx.fillText(`${liveSpeed.toFixed(0)}%`, pad.left - 40, liveY + 4);
 }
 
 curveStartColor.addEventListener("input", drawCurve);
