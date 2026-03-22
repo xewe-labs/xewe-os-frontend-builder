@@ -15,15 +15,6 @@ const curveGradientBar = document.getElementById("curveGradientBar");
 const curveCanvas = document.getElementById("curveCanvas");
 const ctx = curveCanvas.getContext("2d");
 
-function rgbToHex(r, g, b) {
-  return (
-    "#" +
-    [r, g, b]
-      .map((value) => Number(value).toString(16).padStart(2, "0"))
-      .join("")
-  );
-}
-
 function hexToRgb(hex) {
   const clean = hex.replace("#", "");
   return {
@@ -61,45 +52,39 @@ async function loadState() {
   state.fan_data = data.fan_data;
   state.argb_data = data.argb_data;
   state.sensor_data = data.sensor_data;
-  state.ui_config = data.ui_config;
+
+  if (!state.ui_config) {
+    state.ui_config = data.ui_config;
+    renderCurveEditor();
+    drawCurve();
+  }
 
   renderInfo();
   renderRawData();
-  renderCurveEditor();
-  drawCurve();
 }
 
 function renderInfo() {
   const fans = state.fan_data?.fans || [];
-  const argb = state.argb_data || [];
   const sensor = state.sensor_data;
 
   if (!sensor) return;
 
   const fan1 = fans[0] || {};
   const fan2 = fans[1] || {};
-  const led = argb[0] || { state: false, r: 255, g: 255, b: 255 };
 
   const laptopTemp = Number(sensor.object_temp || 0);
   const sensorTemp = Number(sensor.ambient_temp || 0);
-  const sharedFanSpeed = Number(fan1.speed || 0);
+
   const fan1Rpm = Number(fan1.displayed_rpm || 0);
   const fan2Rpm = Number(fan2.displayed_rpm || 0);
-  const colorHex = rgbToHex(led.r || 0, led.g || 0, led.b || 0);
+  const fan1Pct = Number(fan1.speed || 0);
+  const fan2Pct = Number(fan2.speed || 0);
 
   document.getElementById("laptopTemp").textContent = `${laptopTemp.toFixed(2)}°C`;
   document.getElementById("sensorTemp").textContent = `${sensorTemp.toFixed(2)}°C`;
 
-  document.getElementById("sharedFanSpeed").textContent = `${sharedFanSpeed}%`;
-  document.getElementById(
-    "fanSpeedDetail"
-  ).textContent = `Fan 1: ${fan1Rpm} RPM · Fan 2: ${fan2Rpm} RPM`;
-
-  document.getElementById("currentColorHex").textContent = colorHex.toUpperCase();
-  document.getElementById("currentColorSwatch").style.background = colorHex;
-  document.getElementById(
-    "currentColorDetail"
-  ).textContent = `${led.state ? "ON" : "OFF"} · RGB(${led.r}, ${led.g}, ${led.b})`;
+  document.getElementById("fan1Summary").textContent = `${fan1Rpm} RPM (${fan1Pct}%)`;
+  document.getElementById("fan2Summary").textContent = `${fan2Rpm} RPM (${fan2Pct}%)`;
 
   const badge = document.getElementById("sensorOnlineBadge");
   badge.textContent = sensor.online ? "ONLINE" : "OFFLINE";

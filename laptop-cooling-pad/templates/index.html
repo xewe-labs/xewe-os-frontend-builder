@@ -22,30 +22,35 @@
           <span id="sensorOnlineBadge" class="badge">--</span>
         </div>
 
-        <div class="stats">
-          <div class="stat-card">
-            <span class="label">Laptop Temp</span>
-            <strong id="laptopTemp">--</strong>
-          </div>
+        <div class="info-sections">
+          <div class="info-section">
+            <div class="info-section-title">Temperatures</div>
+            <div class="info-row">
+              <div class="info-card">
+                <span class="label">Laptop Temp</span>
+                <strong id="laptopTemp">--</strong>
+              </div>
 
-          <div class="stat-card">
-            <span class="label">Sensor Temp</span>
-            <strong id="sensorTemp">--</strong>
-          </div>
-
-          <div class="stat-card">
-            <span class="label">Fan Speed</span>
-            <strong id="sharedFanSpeed">--</strong>
-            <small id="fanSpeedDetail">--</small>
-          </div>
-
-          <div class="stat-card">
-            <span class="label">Current Color</span>
-            <div class="color-line">
-              <span id="currentColorSwatch" class="swatch"></span>
-              <strong id="currentColorHex">--</strong>
+              <div class="info-card">
+                <span class="label">Sensor Temp</span>
+                <strong id="sensorTemp">--</strong>
+              </div>
             </div>
-            <small id="currentColorDetail">--</small>
+          </div>
+
+          <div class="info-section">
+            <div class="info-section-title">Fan RPM</div>
+            <div class="info-row">
+              <div class="info-card">
+                <span class="label">Fan 1</span>
+                <strong id="fan1Summary">--</strong>
+              </div>
+
+              <div class="info-card">
+                <span class="label">Fan 2</span>
+                <strong id="fan2Summary">--</strong>
+              </div>
+            </div>
           </div>
         </div>
 
