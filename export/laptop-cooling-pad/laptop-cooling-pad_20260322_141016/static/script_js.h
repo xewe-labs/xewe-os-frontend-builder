@@ -1,3 +1,6 @@
+#pragma once
+#include <pgmspace.h>
+static const char SCRIPT_JS[] PROGMEM = R"rawliteral(
 const state = {
   fan_data: null,
   argb_data: null,
@@ -12,6 +15,7 @@ const curveEndColor = document.getElementById("curveEndColor");
 const addPointBtn = document.getElementById("addPointBtn");
 const saveCurveBtn = document.getElementById("saveCurveBtn");
 const curveTableBody = document.getElementById("curveTableBody");
+const curveGradientBar = document.getElementById("curveGradientBar");
 
 const curveCanvas = document.getElementById("curveCanvas");
 const ctx = curveCanvas.getContext("2d");
@@ -81,6 +85,25 @@ function getPointColor(temp, startColor, endColor, minTemp, maxTemp) {
   return interpolateColor(startColor, endColor, t);
 }
 
+function updateGradientBar(points) {
+  const startColor = curveStartColor.value;
+  const endColor = curveEndColor.value;
+  const trackColor = "rgba(255,255,255,0.08)";
+  const { minTemp, maxTemp } = getCurveRange(points);
+
+  curveGradientBar.style.background = `
+    linear-gradient(
+      90deg,
+      ${trackColor} 0%,
+      ${trackColor} ${minTemp}%,
+      ${startColor} ${minTemp}%,
+      ${endColor} ${maxTemp}%,
+      ${trackColor} ${maxTemp}%,
+      ${trackColor} 100%
+    )
+  `;
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   if (!response.ok) {
@@ -117,6 +140,7 @@ function renderCurveEditor() {
   curveEndColor.value = state.ui_config.curve_edge_colors.end;
 
   const points = state.ui_config.temp_curve;
+  updateGradientBar(points);
 
   curveTableBody.innerHTML = "";
 
@@ -230,6 +254,8 @@ function drawCurve() {
   const points = state.ui_config.temp_curve;
   const { minTemp, maxTemp } = getCurveRange(points);
 
+  updateGradientBar(points);
+
   ctx.clearRect(0, 0, curveCanvas.width, curveCanvas.height);
 
   const pad = { top: 28, right: 28, bottom: 92, left: 92 };
@@ -264,7 +290,6 @@ function drawCurve() {
   const xTickLabelY = pad.top + height + 28;
   const xAxisLabelY = pad.top + height + 56;
   const yTickLabelX = pad.left - 46;
-  const yAxisLabelX = 8;
 
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
@@ -285,7 +310,7 @@ function drawCurve() {
   ctx.fillText("Temp (°C)", curveCanvas.width / 2, xAxisLabelY);
 
   ctx.save();
-  ctx.translate(yAxisLabelX, pad.top + height / 2);
+  ctx.translate(24, pad.top + height / 2);
   ctx.rotate(-Math.PI / 2);
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
@@ -399,3 +424,4 @@ saveCurveBtn.addEventListener("click", saveCurve);
 
 loadState();
 setInterval(loadState, 1000);
+)rawliteral";

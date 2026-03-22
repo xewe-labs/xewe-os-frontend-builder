@@ -1,3 +1,6 @@
+#pragma once
+#include <pgmspace.h>
+static const char STYLES_CSS[] PROGMEM = R"rawliteral(
 :root {
   --bg: #0a0f1f;
   --panel: #11182d;
@@ -185,7 +188,12 @@ input[type="number"] {
 }
 
 .gradient-bar {
-  display: none;
+  margin-top: 12px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
 }
 
 .curve-table {
@@ -228,3 +236,4 @@ input[type="number"] {
     align-items: stretch;
   }
 }
+)rawliteral";

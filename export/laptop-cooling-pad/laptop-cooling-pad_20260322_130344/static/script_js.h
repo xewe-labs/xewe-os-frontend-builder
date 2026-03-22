@@ -1,3 +1,6 @@
+#pragma once
+#include <pgmspace.h>
+static const char SCRIPT_JS[] PROGMEM = R"rawliteral(
 const state = {
   fan_data: null,
   argb_data: null,
@@ -5,28 +8,15 @@ const state = {
   ui_config: null,
 };
 
-let curvePointIdCounter = 0;
-
 const curveStartColor = document.getElementById("curveStartColor");
 const curveEndColor = document.getElementById("curveEndColor");
 const addPointBtn = document.getElementById("addPointBtn");
 const saveCurveBtn = document.getElementById("saveCurveBtn");
 const curveTableBody = document.getElementById("curveTableBody");
+const curveGradientBar = document.getElementById("curveGradientBar");
 
 const curveCanvas = document.getElementById("curveCanvas");
 const ctx = curveCanvas.getContext("2d");
-
-function makePointId() {
-  curvePointIdCounter += 1;
-  return `curve-point-${curvePointIdCounter}`;
-}
-
-function withPointIds(points = []) {
-  return points.map((point) => ({
-    ...point,
-    _id: point._id ?? makePointId(),
-  }));
-}
 
 function hexToRgb(hex) {
   const clean = hex.replace("#", "");
@@ -52,35 +42,6 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function normalizeCurve() {
-  if (!state.ui_config?.temp_curve) return;
-
-  state.ui_config.temp_curve = sortCurve(withPointIds(state.ui_config.temp_curve)).map((point) => ({
-    ...point,
-    temp: clamp(Number(point.temp) || 0, 0, 100),
-    speed: clamp(Number(point.speed) || 0, 0, 100),
-  }));
-}
-
-function getCurveRange(points) {
-  const sorted = sortCurve(points);
-  const minTemp = Number(sorted[0]?.temp ?? 0);
-  const maxTemp = Number(sorted[sorted.length - 1]?.temp ?? 100);
-
-  return {
-    minTemp,
-    maxTemp,
-    span: Math.max(maxTemp - minTemp, 1),
-  };
-}
-
-function getPointColor(temp, startColor, endColor, minTemp, maxTemp) {
-  const span = Math.max(maxTemp - minTemp, 1);
-  const safeTemp = clamp(Number(temp) || 0, minTemp, maxTemp);
-  const t = (safeTemp - minTemp) / span;
-  return interpolateColor(startColor, endColor, t);
-}
-
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   if (!response.ok) {
@@ -97,30 +58,24 @@ async function loadState() {
 
   if (!state.ui_config) {
     state.ui_config = data.ui_config;
-    normalizeCurve();
     renderCurveEditor();
   }
 
   drawCurve();
 }
 
-function findCurvePointById(pointId) {
-  return state.ui_config?.temp_curve?.find((point) => point._id === pointId);
-}
-
 function renderCurveEditor() {
   if (!state.ui_config) return;
 
-  normalizeCurve();
-
   curveStartColor.value = state.ui_config.curve_edge_colors.start;
   curveEndColor.value = state.ui_config.curve_edge_colors.end;
-
-  const points = state.ui_config.temp_curve;
+  curveGradientBar.style.background = `linear-gradient(90deg, ${curveStartColor.value}, ${curveEndColor.value})`;
 
   curveTableBody.innerHTML = "";
 
-  points.forEach((point) => {
+  const points = sortCurve(state.ui_config.temp_curve);
+
+  points.forEach((point, index) => {
     const row = document.createElement("tr");
 
     const tempCell = document.createElement("td");
@@ -129,10 +84,9 @@ function renderCurveEditor() {
     tempInput.min = "0";
     tempInput.max = "100";
     tempInput.value = point.temp;
-    tempInput.dataset.pointId = point._id;
+    tempInput.dataset.index = index;
     tempInput.dataset.field = "temp";
     tempInput.addEventListener("input", handleCurveInput);
-    tempInput.addEventListener("blur", handleCurveCommit);
     tempCell.appendChild(tempInput);
 
     const speedCell = document.createElement("td");
@@ -141,10 +95,9 @@ function renderCurveEditor() {
     speedInput.min = "0";
     speedInput.max = "100";
     speedInput.value = point.speed;
-    speedInput.dataset.pointId = point._id;
+    speedInput.dataset.index = index;
     speedInput.dataset.field = "speed";
     speedInput.addEventListener("input", handleCurveInput);
-    speedInput.addEventListener("blur", handleCurveCommit);
     speedCell.appendChild(speedInput);
 
     const actionCell = document.createElement("td");
@@ -154,12 +107,7 @@ function renderCurveEditor() {
     removeBtn.disabled = points.length <= 2;
     removeBtn.addEventListener("click", () => {
       if (state.ui_config.temp_curve.length <= 2) return;
-
-      state.ui_config.temp_curve = state.ui_config.temp_curve.filter(
-        (curvePoint) => curvePoint._id !== point._id
-      );
-
-      normalizeCurve();
+      state.ui_config.temp_curve.splice(index, 1);
       renderCurveEditor();
       drawCurve();
     });
@@ -174,29 +122,21 @@ function renderCurveEditor() {
 }
 
 function handleCurveInput(event) {
-  const pointId = event.target.dataset.pointId;
+  const index = Number(event.target.dataset.index);
   const field = event.target.dataset.field;
-  const point = findCurvePointById(pointId);
+  const value = clamp(Number(event.target.value) || 0, 0, 100);
 
-  if (!point) return;
-
-  point[field] = clamp(Number(event.target.value) || 0, 0, 100);
-  drawCurve();
-}
-
-function handleCurveCommit() {
-  normalizeCurve();
-  renderCurveEditor();
+  state.ui_config.temp_curve[index][field] = value;
   drawCurve();
 }
 
 function getCurvePayload() {
-  normalizeCurve();
-
-  return state.ui_config.temp_curve.map((point) => ({
-    temp: clamp(Number(point.temp) || 0, 0, 100),
-    speed: clamp(Number(point.speed) || 0, 0, 100),
-  }));
+  return sortCurve(
+    state.ui_config.temp_curve.map((point) => ({
+      temp: clamp(Number(point.temp) || 0, 0, 100),
+      speed: clamp(Number(point.speed) || 0, 0, 100),
+    }))
+  );
 }
 
 async function saveCurve() {
@@ -215,7 +155,6 @@ async function saveCurve() {
   });
 
   state.ui_config = data.ui_config;
-  normalizeCurve();
   renderCurveEditor();
   drawCurve();
 }
@@ -223,16 +162,15 @@ async function saveCurve() {
 function drawCurve() {
   if (!state.ui_config) return;
 
-  normalizeCurve();
-
   const startColor = curveStartColor.value;
   const endColor = curveEndColor.value;
-  const points = state.ui_config.temp_curve;
-  const { minTemp, maxTemp } = getCurveRange(points);
+  const points = getCurvePayload();
+
+  curveGradientBar.style.background = `linear-gradient(90deg, ${startColor}, ${endColor})`;
 
   ctx.clearRect(0, 0, curveCanvas.width, curveCanvas.height);
 
-  const pad = { top: 28, right: 28, bottom: 92, left: 92 };
+  const pad = { top: 28, right: 28, bottom: 48, left: 60 };
   const width = curveCanvas.width - pad.left - pad.right;
   const height = curveCanvas.height - pad.top - pad.bottom;
 
@@ -261,67 +199,40 @@ function drawCurve() {
   ctx.fillStyle = "rgba(255,255,255,0.78)";
   ctx.font = "12px sans-serif";
 
-  const xTickLabelY = pad.top + height + 28;
-  const xAxisLabelY = pad.top + height + 56;
-  const yTickLabelX = pad.left - 46;
-  const yAxisLabelX = 8;
-
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
   for (let i = 0; i <= 10; i++) {
     const label = i * 10;
-    ctx.fillText(`${label}`, x(label), xTickLabelY);
+    ctx.fillText(`${label}`, x(label) - 8, pad.top + height + 22);
+    ctx.fillText(`${label}%`, 12, y(label) + 4);
   }
 
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-  for (let i = 0; i <= 10; i++) {
-    const label = i * 10;
-    ctx.fillText(`${label}%`, yTickLabelX, y(label));
-  }
-
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  ctx.fillText("Temp (°C)", curveCanvas.width / 2, xAxisLabelY);
+  ctx.fillText("Temp (°C)", curveCanvas.width / 2 - 24, curveCanvas.height - 12);
 
   ctx.save();
-  ctx.translate(yAxisLabelX, pad.top + height / 2);
+  ctx.translate(20, curveCanvas.height / 2 + 20);
   ctx.rotate(-Math.PI / 2);
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
   ctx.fillText("Fan Speed (%)", 0, 0);
   ctx.restore();
 
-  if (points.length > 1) {
-    let stroke = startColor;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const t = points.length === 1 ? 0 : i / (points.length - 1);
 
-    if (maxTemp !== minTemp) {
-      const lineGradient = ctx.createLinearGradient(x(minTemp), 0, x(maxTemp), 0);
-      lineGradient.addColorStop(0, startColor);
-      lineGradient.addColorStop(1, endColor);
-      stroke = lineGradient;
-    }
-
-    ctx.strokeStyle = stroke;
+    ctx.strokeStyle = interpolateColor(startColor, endColor, t);
     ctx.lineWidth = 4;
     ctx.lineCap = "round";
-    ctx.lineJoin = "round";
     ctx.setLineDash([]);
     ctx.beginPath();
-    ctx.moveTo(x(points[0].temp), y(points[0].speed));
-
-    for (let i = 1; i < points.length; i++) {
-      ctx.lineTo(x(points[i].temp), y(points[i].speed));
-    }
-
+    ctx.moveTo(x(p1.temp), y(p1.speed));
+    ctx.lineTo(x(p2.temp), y(p2.speed));
     ctx.stroke();
   }
 
-  points.forEach((point) => {
-    const pointColor = getPointColor(point.temp, startColor, endColor, minTemp, maxTemp);
+  points.forEach((point, index) => {
+    const t = points.length === 1 ? 0 : index / (points.length - 1);
 
     ctx.beginPath();
-    ctx.fillStyle = pointColor;
+    ctx.fillStyle = interpolateColor(startColor, endColor, t);
     ctx.arc(x(point.temp), y(point.speed), 6, 0, Math.PI * 2);
     ctx.fill();
 
@@ -363,34 +274,15 @@ function drawCurve() {
 
   ctx.fillStyle = "rgba(255,255,255,0.9)";
   ctx.font = "12px sans-serif";
-
-  ctx.textAlign = "center";
-  ctx.textBaseline = "bottom";
-  ctx.fillText(`${liveTemp.toFixed(1)}°C`, liveX, pad.top + height + 14);
-
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-  ctx.fillText(`${liveSpeed.toFixed(0)}%`, pad.left - 12, liveY);
+  ctx.fillText(`${liveTemp.toFixed(1)}°C`, liveX - 18, pad.top + height + 18);
+  ctx.fillText(`${liveSpeed.toFixed(0)}%`, pad.left - 40, liveY + 4);
 }
 
 curveStartColor.addEventListener("input", drawCurve);
 curveEndColor.addEventListener("input", drawCurve);
 
 addPointBtn.addEventListener("click", () => {
-  if (!state.ui_config) return;
-
-  normalizeCurve();
-
-  const points = state.ui_config.temp_curve;
-  const lastPoint = points[points.length - 1] ?? { temp: 65, speed: 80 };
-
-  state.ui_config.temp_curve.push({
-    _id: makePointId(),
-    temp: clamp(lastPoint.temp + 5, 0, 100),
-    speed: clamp(lastPoint.speed, 0, 100),
-  });
-
-  normalizeCurve();
+  state.ui_config.temp_curve.push({ temp: 70, speed: 100 });
   renderCurveEditor();
   drawCurve();
 });
@@ -399,3 +291,4 @@ saveCurveBtn.addEventListener("click", saveCurve);
 
 loadState();
 setInterval(loadState, 1000);
+)rawliteral";
