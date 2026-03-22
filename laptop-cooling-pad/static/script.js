@@ -232,7 +232,7 @@ function drawCurve() {
 
   ctx.clearRect(0, 0, curveCanvas.width, curveCanvas.height);
 
-  const pad = { top: 28, right: 28, bottom: 92, left: 92 };
+  const pad = { top: 28, right: 28, bottom: 92, left: 122 };
   const width = curveCanvas.width - pad.left - pad.right;
   const height = curveCanvas.height - pad.top - pad.bottom;
 
@@ -264,7 +264,7 @@ function drawCurve() {
   const xTickLabelY = pad.top + height + 28;
   const xAxisLabelY = pad.top + height + 56;
   const yTickLabelX = pad.left - 46;
-  const yAxisLabelX = 8;
+  const yAxisLabelX = 14;
 
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
