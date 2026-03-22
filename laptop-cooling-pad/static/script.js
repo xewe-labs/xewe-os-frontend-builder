@@ -3,13 +3,7 @@ const state = {
   argb_data: null,
   sensor_data: null,
   ui_config: null,
-  summary: null,
 };
-
-const refreshBtn = document.getElementById("refreshBtn");
-const applyArgbBtn = document.getElementById("applyArgbBtn");
-const argbToggle = document.getElementById("argbToggle");
-const argbColor = document.getElementById("argbColor");
 
 const curveStartColor = document.getElementById("curveStartColor");
 const curveEndColor = document.getElementById("curveEndColor");
@@ -42,14 +36,16 @@ function hexToRgb(hex) {
 function interpolateColor(hexA, hexB, t) {
   const a = hexToRgb(hexA);
   const b = hexToRgb(hexB);
-
   const mix = (x, y) => Math.round(x + (y - x) * t);
-
   return `rgb(${mix(a.r, b.r)}, ${mix(a.g, b.g)}, ${mix(a.b, b.b)})`;
 }
 
 function sortCurve(points) {
   return [...points].sort((a, b) => Number(a.temp) - Number(b.temp));
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 async function fetchJson(url, options = {}) {
@@ -60,60 +56,59 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
-async function loadInitialState() {
+async function loadState() {
   const data = await fetchJson("/api/state");
   state.fan_data = data.fan_data;
   state.argb_data = data.argb_data;
   state.sensor_data = data.sensor_data;
   state.ui_config = data.ui_config;
-  state.summary = data.summary;
 
   renderInfo();
   renderRawData();
-  renderArgbControls();
   renderCurveEditor();
   drawCurve();
 }
 
-async function refreshDashboard() {
-  const data = await fetchJson("/api/state");
-  state.fan_data = data.fan_data;
-  state.argb_data = data.argb_data;
-  state.sensor_data = data.sensor_data;
-  state.summary = data.summary;
-
-  renderInfo();
-  renderRawData();
-}
-
 function renderInfo() {
-  const summary = state.summary;
+  const fans = state.fan_data?.fans || [];
+  const argb = state.argb_data || [];
   const sensor = state.sensor_data;
 
-  if (!summary || !sensor) return;
+  if (!sensor) return;
 
-  document.getElementById("laptopTemp").textContent = `${summary.laptop_temp.toFixed(2)}°C`;
-  document.getElementById("sensorTemp").textContent = `${summary.sensor_temp.toFixed(2)}°C`;
+  const fan1 = fans[0] || {};
+  const fan2 = fans[1] || {};
+  const led = argb[0] || { state: false, r: 255, g: 255, b: 255 };
 
-  document.getElementById("sharedFanSpeed").textContent = `${summary.fan_speed_percent}%`;
+  const laptopTemp = Number(sensor.object_temp || 0);
+  const sensorTemp = Number(sensor.ambient_temp || 0);
+  const sharedFanSpeed = Number(fan1.speed || 0);
+  const fan1Rpm = Number(fan1.displayed_rpm || 0);
+  const fan2Rpm = Number(fan2.displayed_rpm || 0);
+  const colorHex = rgbToHex(led.r || 0, led.g || 0, led.b || 0);
+
+  document.getElementById("laptopTemp").textContent = `${laptopTemp.toFixed(2)}°C`;
+  document.getElementById("sensorTemp").textContent = `${sensorTemp.toFixed(2)}°C`;
+
+  document.getElementById("sharedFanSpeed").textContent = `${sharedFanSpeed}%`;
   document.getElementById(
     "fanSpeedDetail"
-  ).textContent = `Fan 1: ${summary.fan1_rpm} RPM · Fan 2: ${summary.fan2_rpm} RPM`;
+  ).textContent = `Fan 1: ${fan1Rpm} RPM · Fan 2: ${fan2Rpm} RPM`;
 
-  document.getElementById("currentColorHex").textContent = summary.color_hex.toUpperCase();
-  document.getElementById("currentColorSwatch").style.background = summary.color_hex;
+  document.getElementById("currentColorHex").textContent = colorHex.toUpperCase();
+  document.getElementById("currentColorSwatch").style.background = colorHex;
   document.getElementById(
     "currentColorDetail"
-  ).textContent = `${summary.color_state ? "ON" : "OFF"} · RGB(${summary.color_rgb.r}, ${summary.color_rgb.g}, ${summary.color_rgb.b})`;
+  ).textContent = `${led.state ? "ON" : "OFF"} · RGB(${led.r}, ${led.g}, ${led.b})`;
 
   const badge = document.getElementById("sensorOnlineBadge");
   badge.textContent = sensor.online ? "ONLINE" : "OFFLINE";
-  badge.classList.toggle("online", sensor.online);
+  badge.classList.toggle("online", !!sensor.online);
   badge.classList.toggle("offline", !sensor.online);
 
   document.getElementById(
     "sensorMeta"
-  ).textContent = `${sensor.module} · Ambient from sensor, object temp used as laptop temp · I2C 0x${Number(sensor.i2c_address)
+  ).textContent = `${sensor.module} · I2C 0x${Number(sensor.i2c_address)
     .toString(16)
     .toUpperCase()} · SDA ${sensor.sda_pin} · SCL ${sensor.scl_pin}`;
 }
@@ -124,31 +119,6 @@ function renderRawData() {
   document.getElementById("fanJson").textContent = JSON.stringify(state.fan_data, null, 2);
   document.getElementById("argbJson").textContent = JSON.stringify(state.argb_data, null, 2);
   document.getElementById("sensorJson").textContent = JSON.stringify(state.sensor_data, null, 2);
-}
-
-function renderArgbControls() {
-  const zone = state.argb_data?.[0];
-  if (!zone) return;
-
-  argbToggle.checked = zone.state;
-  argbColor.value = rgbToHex(zone.r, zone.g, zone.b);
-}
-
-async function applyArgb() {
-  const payload = {
-    state: argbToggle.checked,
-    hex: argbColor.value,
-  };
-
-  const data = await fetchJson("/argb/data", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  state.argb_data = data.argb_data;
-  renderArgbControls();
-  await refreshDashboard();
 }
 
 function renderCurveEditor() {
@@ -211,7 +181,7 @@ function renderCurveEditor() {
 function handleCurveInput(event) {
   const index = Number(event.target.dataset.index);
   const field = event.target.dataset.field;
-  const value = Math.max(0, Math.min(100, Number(event.target.value) || 0));
+  const value = clamp(Number(event.target.value) || 0, 0, 100);
 
   state.ui_config.temp_curve[index][field] = value;
   drawCurve();
@@ -220,8 +190,8 @@ function handleCurveInput(event) {
 function getCurvePayload() {
   return sortCurve(
     state.ui_config.temp_curve.map((point) => ({
-      temp: Math.max(0, Math.min(100, Number(point.temp))),
-      speed: Math.max(0, Math.min(100, Number(point.speed))),
+      temp: clamp(Number(point.temp) || 0, 0, 100),
+      speed: clamp(Number(point.speed) || 0, 0, 100),
     }))
   );
 }
@@ -244,7 +214,6 @@ async function saveCurve() {
   state.ui_config = data.ui_config;
   renderCurveEditor();
   drawCurve();
-  await refreshDashboard();
 }
 
 function drawCurve() {
@@ -328,9 +297,6 @@ function drawCurve() {
   });
 }
 
-refreshBtn.addEventListener("click", refreshDashboard);
-applyArgbBtn.addEventListener("click", applyArgb);
-
 curveStartColor.addEventListener("input", drawCurve);
 curveEndColor.addEventListener("input", drawCurve);
 
@@ -342,5 +308,5 @@ addPointBtn.addEventListener("click", () => {
 
 saveCurveBtn.addEventListener("click", saveCurve);
 
-loadInitialState();
-setInterval(refreshDashboard, 2500);
+loadState();
+setInterval(loadState, 1000);
