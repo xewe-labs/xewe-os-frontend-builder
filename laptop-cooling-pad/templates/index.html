@@ -3,28 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Laptop Cooling Pad UI</title>
+  <title>XeWe Laptop Cooler</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body>
   <div class="page">
     <header class="header">
       <div>
-        <p class="eyebrow">Dummy Flask UI</p>
-        <h1>Laptop Cooling Pad Dashboard</h1>
+        <h1>XeWe Laptop Cooler</h1>
       </div>
     </header>
 
-    <main class="single-panel-layout">
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Temperature Curve</h2>
-          <span class="subtle">Live point = laptop temp + current fan speed</span>
-        </div>
-
         <div class="control-block">
           <div class="curve-head">
-            <h3>Curve Editor</h3>
+            <h2>Curve</h2>
             <div class="curve-color-pickers">
               <label class="field inline-field">
                 <span>Edge 1</span>
@@ -59,9 +51,6 @@
             <button id="saveCurveBtn" class="btn btn-primary">Save Curve</button>
           </div>
         </div>
-      </section>
-    </main>
-  </div>
 
   <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>

@@ -14,7 +14,10 @@ const saveCurveBtn = document.getElementById("saveCurveBtn");
 const curveTableBody = document.getElementById("curveTableBody");
 
 const curveCanvas = document.getElementById("curveCanvas");
-const ctx = curveCanvas.getContext("2d");
+const ctx = curveCanvas.getContext("2d", { alpha: true });
+
+const CANVAS_ASPECT_RATIO = 960 / 440;
+const MAX_DEVICE_PIXEL_RATIO = 3;
 
 function makePointId() {
   curvePointIdCounter += 1;
@@ -79,6 +82,41 @@ function getPointColor(temp, startColor, endColor, minTemp, maxTemp) {
   const safeTemp = clamp(Number(temp) || 0, minTemp, maxTemp);
   const t = (safeTemp - minTemp) / span;
   return interpolateColor(startColor, endColor, t);
+}
+
+function getCanvasLogicalSize() {
+  const rect = curveCanvas.getBoundingClientRect();
+  let width = Math.max(320, Math.round(rect.width));
+  let height = Math.max(220, Math.round(rect.height));
+
+  if (!height || Math.abs(width / height - CANVAS_ASPECT_RATIO) > 0.02) {
+    height = Math.round(width / CANVAS_ASPECT_RATIO);
+  }
+
+  return { width, height };
+}
+
+function setupHiDPICanvas() {
+  const { width, height } = getCanvasLogicalSize();
+  const dpr = Math.min(window.devicePixelRatio || 1, MAX_DEVICE_PIXEL_RATIO);
+
+  const displayWidth = Math.round(width * dpr);
+  const displayHeight = Math.round(height * dpr);
+
+  if (curveCanvas.width !== displayWidth || curveCanvas.height !== displayHeight) {
+    curveCanvas.width = displayWidth;
+    curveCanvas.height = displayHeight;
+  }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+
+  return { width, height, dpr };
+}
+
+function crisp(value) {
+  return Math.round(value) + 0.5;
 }
 
 async function fetchJson(url, options = {}) {
@@ -220,77 +258,86 @@ async function saveCurve() {
   drawCurve();
 }
 
-function drawCurve() {
-  if (!state.ui_config) return;
-
-  normalizeCurve();
-
-  const startColor = curveStartColor.value;
-  const endColor = curveEndColor.value;
-  const points = state.ui_config.temp_curve;
-  const { minTemp, maxTemp } = getCurveRange(points);
-
-  ctx.clearRect(0, 0, curveCanvas.width, curveCanvas.height);
-
-  const pad = { top: 28, right: 28, bottom: 92, left: 122 };
-  const width = curveCanvas.width - pad.left - pad.right;
-  const height = curveCanvas.height - pad.top - pad.bottom;
-
-  const x = (temp) => pad.left + (temp / 100) * width;
-  const y = (speed) => pad.top + height - (speed / 100) * height;
-
-  ctx.strokeStyle = "rgba(255,255,255,0.08)";
-  ctx.lineWidth = 1;
-  ctx.setLineDash([]);
+function drawGrid(ctx2d, x, y, pad, width, height) {
+  ctx2d.strokeStyle = "rgba(255,255,255,0.08)";
+  ctx2d.lineWidth = 1;
+  ctx2d.setLineDash([]);
 
   for (let i = 0; i <= 10; i++) {
-    const xPos = x(i * 10);
-    const yPos = y(i * 10);
+    const xPos = crisp(x(i * 10));
+    const yPos = crisp(y(i * 10));
 
-    ctx.beginPath();
-    ctx.moveTo(xPos, pad.top);
-    ctx.lineTo(xPos, pad.top + height);
-    ctx.stroke();
+    ctx2d.beginPath();
+    ctx2d.moveTo(xPos, pad.top);
+    ctx2d.lineTo(xPos, pad.top + height);
+    ctx2d.stroke();
 
-    ctx.beginPath();
-    ctx.moveTo(pad.left, yPos);
-    ctx.lineTo(pad.left + width, yPos);
-    ctx.stroke();
+    ctx2d.beginPath();
+    ctx2d.moveTo(pad.left, yPos);
+    ctx2d.lineTo(pad.left + width, yPos);
+    ctx2d.stroke();
   }
+}
 
-  ctx.fillStyle = "rgba(255,255,255,0.78)";
-  ctx.font = "12px sans-serif";
+function drawAxesLabels(ctx2d, x, y, logicalWidth, logicalHeight, pad, height) {
+  ctx2d.fillStyle = "rgba(255,255,255,0.78)";
+  ctx2d.font = "12px sans-serif";
 
   const xTickLabelY = pad.top + height + 28;
   const xAxisLabelY = pad.top + height + 56;
   const yTickLabelX = pad.left - 46;
   const yAxisLabelX = 14;
 
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
+  ctx2d.textAlign = "center";
+  ctx2d.textBaseline = "top";
   for (let i = 0; i <= 10; i++) {
     const label = i * 10;
-    ctx.fillText(`${label}`, x(label), xTickLabelY);
+    ctx2d.fillText(`${label}`, x(label), xTickLabelY);
   }
 
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
+  ctx2d.textAlign = "right";
+  ctx2d.textBaseline = "middle";
   for (let i = 0; i <= 10; i++) {
     const label = i * 10;
-    ctx.fillText(`${label}%`, yTickLabelX, y(label));
+    ctx2d.fillText(`${label}%`, yTickLabelX, y(label));
   }
 
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  ctx.fillText("Temp (°C)", curveCanvas.width / 2, xAxisLabelY);
+  ctx2d.textAlign = "center";
+  ctx2d.textBaseline = "top";
+  ctx2d.fillText("Temp (°C)", logicalWidth / 2, xAxisLabelY);
 
-  ctx.save();
-  ctx.translate(yAxisLabelX, pad.top + height / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  ctx.fillText("Fan Speed (%)", 0, 0);
-  ctx.restore();
+  ctx2d.save();
+  ctx2d.translate(yAxisLabelX, pad.top + height / 2);
+  ctx2d.rotate(-Math.PI / 2);
+  ctx2d.textAlign = "center";
+  ctx2d.textBaseline = "top";
+  ctx2d.fillText("Fan Speed (%)", 0, 0);
+  ctx2d.restore();
+}
+
+function drawCurve() {
+  if (!state.ui_config) return;
+
+  normalizeCurve();
+
+  const { width: logicalWidth, height: logicalHeight } = setupHiDPICanvas();
+
+  const startColor = curveStartColor.value;
+  const endColor = curveEndColor.value;
+  const points = state.ui_config.temp_curve;
+  const { minTemp, maxTemp } = getCurveRange(points);
+
+  ctx.clearRect(0, 0, logicalWidth, logicalHeight);
+
+  const pad = { top: 28, right: 28, bottom: 92, left: 122 };
+  const width = logicalWidth - pad.left - pad.right;
+  const height = logicalHeight - pad.top - pad.bottom;
+
+  const x = (temp) => pad.left + (temp / 100) * width;
+  const y = (speed) => pad.top + height - (speed / 100) * height;
+
+  drawGrid(ctx, x, y, pad, width, height);
+  drawAxesLabels(ctx, x, y, logicalWidth, logicalHeight, pad, height);
 
   if (points.length > 1) {
     let stroke = startColor;
@@ -396,6 +443,8 @@ addPointBtn.addEventListener("click", () => {
 });
 
 saveCurveBtn.addEventListener("click", saveCurve);
+
+window.addEventListener("resize", drawCurve);
 
 loadState();
 setInterval(loadState, 1000);
