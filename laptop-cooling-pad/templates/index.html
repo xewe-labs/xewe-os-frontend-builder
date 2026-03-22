@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Laptop Cooling Pad UI</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="page-shell">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">Dummy Flask Frontend</p>
+        <h1>Laptop Cooling Pad Control</h1>
+        <p class="subtext">Shared fan and ARGB control driven by one temperature curve.</p>
+      </div>
+      <button id="refreshButton" class="secondary-button" type="button">Refresh</button>
+    </header>
+
+    <section class="grid two-column">
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <p class="eyebrow">Info Dashboard</p>
+            <h2>Runtime Status</h2>
+          </div>
+          <span id="sensorStateBadge" class="status-badge">Sensor --</span>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat-box">
+            <span class="stat-label">Laptop temp</span>
+            <strong id="laptopTemp">--</strong>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Sensor temp</span>
+            <strong id="sensorTemp">--</strong>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Fan 1 speed</span>
+            <strong id="fan1Speed">--</strong>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Fan 2 speed</span>
+            <strong id="fan2Speed">--</strong>
+          </div>
+          <div class="stat-box stat-box-wide">
+            <span class="stat-label">Current color</span>
+            <div class="color-readout">
+              <span id="currentColorSwatch" class="color-swatch"></span>
+              <strong id="currentColor">--</strong>
+            </div>
+          </div>
+          <div class="stat-box stat-box-wide">
+            <span class="stat-label">Shared devices</span>
+            <strong id="sharedBehavior">Both fans and both LED strips follow one controller.</strong>
+          </div>
+        </div>
+
+        <div class="details-grid">
+          <div>
+            <h3>Fan backend data</h3>
+            <pre id="fanJson" class="json-box"></pre>
+          </div>
+          <div>
+            <h3>ARGB backend data</h3>
+            <pre id="argbJson" class="json-box"></pre>
+          </div>
+          <div>
+            <h3>Sensor backend data</h3>
+            <pre id="sensorJson" class="json-box"></pre>
+          </div>
+          <div>
+            <h3>Temp controller data</h3>
+            <pre id="controllerJson" class="json-box"></pre>
+          </div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <p class="eyebrow">Control Dashboard</p>
+            <h2>Curve and Color Setup</h2>
+          </div>
+        </div>
+
+        <form id="controllerForm" class="control-stack">
+          <div class="control-row two-up">
+            <label class="field">
+              <span>Cold edge color</span>
+              <div class="color-input-row">
+                <input id="coldColor" name="coldColor" type="color" value="#0000ff">
+                <input id="coldColorText" type="text" value="#0000FF" maxlength="7">
+              </div>
+            </label>
+            <label class="field">
+              <span>Hot edge color</span>
+              <div class="color-input-row">
+                <input id="hotColor" name="hotColor" type="color" value="#ff0000">
+                <input id="hotColorText" type="text" value="#FF0000" maxlength="7">
+              </div>
+            </label>
+          </div>
+
+          <div class="curve-card">
+            <div class="curve-toolbar">
+              <div>
+                <h3>Temperature curve</h3>
+                <p>One curve drives both fans. Speed is percent.</p>
+              </div>
+              <button id="addPointButton" class="secondary-button" type="button">Add point</button>
+            </div>
+
+            <div id="curveRows" class="curve-rows"></div>
+          </div>
+
+          <div class="curve-preview-card">
+            <div class="curve-preview-header">
+              <div>
+                <h3>Curve preview</h3>
+                <p>Gradient line uses the two edge colors.</p>
+              </div>
+            </div>
+            <canvas id="curveCanvas" width="760" height="320"></canvas>
+          </div>
+
+          <div class="control-row two-up">
+            <label class="field">
+              <span>Simulated laptop temp</span>
+              <input id="simulatedTemp" type="range" min="20" max="100" step="1" value="24">
+              <div class="slider-readout">
+                <strong id="simulatedTempValue">24°C</strong>
+                <span>Updates dashboard only for demo purposes.</span>
+              </div>
+            </label>
+            <div class="field field-note">
+              <span>Behavior note</span>
+              <p>There is no individual fan speed or strip color control. Both fans always use the same speed, and both ARGB strips always use the same color.</p>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button class="primary-button" type="submit">Save controller</button>
+            <p id="saveStatus" class="save-status"></p>
+          </div>
+        </form>
+      </article>
+    </section>
+  </main>
+
+  <template id="curveRowTemplate">
+    <div class="curve-row">
+      <label class="field compact-field">
+        <span>Temp (°C)</span>
+        <input class="curve-temp" type="number" min="0" max="120" step="1" value="40">
+      </label>
+      <label class="field compact-field">
+        <span>Fan speed (%)</span>
+        <input class="curve-speed" type="number" min="0" max="100" step="1" value="50">
+      </label>
+      <button class="danger-button remove-point-button" type="button">Remove</button>
+    </div>
+  </template>
+
+  <script src="/script.js"></script>
+</body>
+</html>
